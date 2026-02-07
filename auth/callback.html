@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Logging you in...</title>
+</head>
+<body>
+    <div style="text-align: center; font-family: sans-serif; margin-top: 50px;">
+        <h2>Success! 🚀</h2>
+        <p>Redirecting you back to Brain Rot Central...</p>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = 'https://secure.almostcrackd.ai'
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+        // The "../" tells the browser to go out of the 'auth' folder to find 'index.html'
+        setTimeout(() => {
+            window.location.href = '../index.html';
+        }, 500); 
+    </script>
+</body>
+</html>

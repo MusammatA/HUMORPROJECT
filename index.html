@@ -55,6 +55,41 @@
             box-shadow: 4px 4px 0px var(--text-main);
         }
 
+        ul { list-style: none; padding: 0; display: grid; gap: 25px; }
+
+        li {
+            background: var(--card-bg);
+            border: 3px solid var(--text-main);
+            border-radius: 16px;
+            overflow: hidden; 
+            box-shadow: 6px 6px 0px var(--text-main);
+            transition: all 0.2s ease;
+        }
+
+        .meme-image {
+            width: 100%;
+            height: auto;
+            border-bottom: 3px solid var(--text-main);
+            display: block;
+        }
+
+        .card-content {
+            padding: 30px;
+            font-size: 1.3rem;
+            line-height: 1.5;
+            border-bottom: 2px solid var(--text-main);
+        }
+
+        .vote-btn {
+            background: none;
+            border: 2px solid var(--text-main);
+            border-radius: 50px;
+            padding: 8px 16px;
+            font-family: 'Quicksand', sans-serif;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
         .auth-box {
             background: white;
             border: 3px solid var(--text-main);
@@ -63,20 +98,6 @@
             text-align: center;
             box-shadow: 6px 6px 0px var(--text-main);
         }
-
-        .vote-btn {
-            background: none;
-            border: 2px solid var(--text-main);
-            border-radius: 50px;
-            padding: 12px 24px;
-            font-family: 'Quicksand', sans-serif;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 1.1rem;
-            transition: background 0.1s;
-        }
-
-        .vote-btn:hover { background-color: var(--accent-green); }
     </style>
 </head>
 <body>
@@ -84,28 +105,24 @@
     <div class="container">
         <h1>Brain Rot Central</h1>
         <p class="subtitle">Fresh from the Database</p>
-        <div id="content-view"></div>
+        <div id="content-view">
+            <p style="text-align: center;">Loading the vibes...</p>
+        </div>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://secure.almostcrackd.ai'
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
-
-        const { createClient } = window.supabase
-        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY)
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
         async function signIn() {
             await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: 'http://localhost:3000'
+                    // This matches your auth/callback.html location
+                    redirectTo: window.location.origin + '/auth/callback'
                 }
             })
-        }
-
-        async function signOut() {
-            await supabaseClient.auth.signOut()
-            window.location.reload()
         }
 
         async function renderApp() {
@@ -113,20 +130,40 @@
             const { data: { session } } = await supabaseClient.auth.getSession()
 
             if (!session) {
-                // This is your original gated screen
+                // Show original login box
                 container.innerHTML = `
                     <div class="auth-box">
                         <h2>Login to see the memes 🔒</h2>
-                        <button class="vote-btn" onclick="signIn()">Login with Google</button>
+                        <button class="vote-btn" onclick="signIn()" style="margin: 20px auto;">
+                            Login with Google
+                        </button>
                     </div>`
             } else {
-                // This shows once you are logged in, without the instructor's pictures
-                container.innerHTML = `
-                    <div style="text-align: center;">
-                        <h2>Welcome back! 👋</h2>
-                        <p>You are logged in as ${session.user.email}</p>
-                        <button class="vote-btn" onclick="signOut()">Logout</button>
-                    </div>`
+                // Fetch the images now that you are "Authenticated"
+                const { data, error } = await supabaseClient.from('images').select('*')
+                
+                if (error) {
+                    container.innerHTML = `<p>Error: ${error.message}</p>`
+                    return
+                }
+
+                let html = `
+                    <div style="text-align: right; margin-bottom: 20px;">
+                        <button class="vote-btn" onclick="supabaseClient.auth.signOut().then(() => location.reload())">Logout</button>
+                    </div>
+                    <ul>`
+                
+                data.forEach(item => {
+                    // Reach out to shared storage for the polite cat and dog pictures
+                    const imageUrl = `https://fshvifvunmcbpbeidvbw.supabase.co/storage/v1/object/public/meme_images/${item.id}.jpg`;
+                    
+                    html += `
+                        <li>
+                            <img src="${imageUrl}" class="meme-image" alt="Meme">
+                            <div class="card-content">✨ Meme ID: ${item.id.substring(0,8)}</div>
+                        </li>`
+                })
+                container.innerHTML = html + `</ul>`
             }
         }
 
