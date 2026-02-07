@@ -166,12 +166,13 @@
             const { error } = await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin,
+                    // Change window.location.origin to this exact string
+                    redirectTo: 'http://localhost:3000/auth/callback',
                     queryParams: {
                         client_id: '388960353527-fh4grc6mla425lg0e3g1hh67omtrdihd.apps.googleusercontent.com'
                     }
                 }
-            })
+             })
             if (error) console.error(error)
         }
 
