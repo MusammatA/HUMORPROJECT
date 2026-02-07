@@ -183,70 +183,59 @@
 
         // --- THE RENDER ENGINE ---
         async function renderApp() {
-            const container = document.getElementById('content-view')
-            const { data: { user } } = await supabaseClient.auth.getUser()
+                    const container = document.getElementById('content-view')
+                    const { data: { user } } = await supabaseClient.auth.getUser()
 
-            if (!user) {
-                // GATED UI
-                container.innerHTML = `
-                    <div class="auth-box">
-                        <h2>Login to see the memes 🔒</h2>
-                        <button class="vote-btn btn-funny" onclick="signIn()" style="margin: 20px auto;">
-                            Login with Google
-                        </button>
-                    </div>
-                `
-            } else {
-                // AUTHENTICATED UI
-                const { data, error } = await supabaseClient.from('captions').select('*')
-                
-                if (error) {
-                    container.innerHTML = `<p>Error: ${error.message}</p>`
-                    return
+                    if (!user) {
+                        container.innerHTML = `
+                            <div class="auth-box">
+                                <h2>Login to see the memes 🔒</h2>
+                                <button class="vote-btn btn-funny" onclick="signIn()" style="margin: 20px auto;">
+                                    Login with Google
+                                </button>
+                            </div>`
+                    } else {
+                        // CHANGE: We are pulling from the 'images' table because that's where the IDs are!
+                        const { data, error } = await supabaseClient.from('images').select('*')
+                        
+                        if (error) {
+                            container.innerHTML = `<p>Error: ${error.message}</p>`
+                            return
+                        }
+
+                        let html = `
+                            <div style="text-align: right; margin-bottom: 20px;">
+                                <button class="vote-btn" onclick="signOut()">Logout (${user.email.split('@')[0]})</button>
+                            </div>
+                            <ul id="data-list">`
+                        
+                        data.forEach(item => {
+                            // FIX: Using item.id to match the 'uuid' column in your screenshot
+                            const imageUrl = `https://fshvifvunmcbpbeidvbw.supabase.co/storage/v1/object/public/meme_images/${item.id}.jpg`;
+                            
+                            html += `
+                                <li>
+                                    <img src="${imageUrl}" class="meme-image" alt="Meme" onerror="this.src='https://via.placeholder.com/400?text=Image+Missing'">
+                                    <div class="card-content">
+                                        ✨ ${item.content || "Meme ID: " + item.id.substring(0,8)}
+                                    </div>
+                                    <div class="card-actions">
+                                        <button class="vote-btn btn-funny">
+                                            <svg class="vote-icon" viewBox="0 0 24 24">
+                                                <circle cx="12" cy="12" r="10"></circle>
+                                                <circle class="eye" cx="9" cy="10" r="1.5"></circle> 
+                                                <circle class="eye" cx="15" cy="10" r="1.5"></circle> 
+                                                <path d="M8 14s1.5 2 4 2 4-2 4-2"></path> 
+                                            </svg>
+                                            <span>${item.like_count || 0}</span>
+                                        </button>
+                                    </div>
+                                </li>`
+                        })
+                        html += `</ul>`
+                        container.innerHTML = html
+                    }
                 }
-
-                let html = `
-                    <div style="text-align: right; margin-bottom: 20px;">
-                        <button class="vote-btn" onclick="signOut()">Logout (${user.email.split('@')[0]})</button>
-                    </div>
-                    <ul id="data-list">`
-                
-                data.forEach(item => {
-                    // Shared image URL from classmates/instructor
-                    const imageUrl = `https://fshvifvunmcbpbeidvbw.supabase.co/storage/v1/object/public/meme_images/${item.id}.jpg`;
-                    
-                    html += `
-                        <li>
-                            <img src="${imageUrl}" class="meme-image" alt="Meme" onerror="this.style.display='none'">
-                            <div class="card-content">
-                                ✨ ${item.content || "No text found"}
-                            </div>
-                            <div class="card-actions">
-                                <button class="vote-btn btn-funny" onclick="this.querySelector('span').innerText++">
-                                    <svg class="vote-icon" viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <circle class="eye" cx="9" cy="10" r="1.5"></circle> 
-                                        <circle class="eye" cx="15" cy="10" r="1.5"></circle> 
-                                        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path> 
-                                    </svg>
-                                    <span>${item.like_count || 0}</span>
-                                </button>
-                                <button class="vote-btn btn-meh">
-                                    <svg class="vote-icon" viewBox="0 0 24 24">
-                                        <circle cx="12" cy="12" r="10"></circle>
-                                        <line x1="8" y1="14" x2="16" y2="14"></line>
-                                        <line x1="9" y1="9" x2="9.01" y2="9" stroke-width="3"></line>
-                                        <line x1="15" y1="9" x2="15.01" y2="9" stroke-width="3"></line>
-                                    </svg>
-                                    Meh
-                                </button>
-                            </div>
-                        </li>`
-                })
-                html += `</ul>`
-                container.innerHTML = html
-            }
-        }
 
         renderApp()
     </script>
