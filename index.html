@@ -119,11 +119,11 @@
             await supabaseClient.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    // This matches your auth/callback.html location
-                    redirectTo: window.location.origin + '/auth/callback'
-                }
-            })
+                    // Adding '/Hello-World' ensures you land back in YOUR project
+                    redirectTo: window.location.origin + '/Hello-World/auth/callback'
         }
+    })
+}
 
         async function renderApp() {
             const container = document.getElementById('content-view')
