@@ -111,26 +111,35 @@
     </div>
 
     <script>
-        const SUPABASE_URL = 'https://secure.almostcrackd.ai/auth/v1/callback'
+        const SUPABASE_URL = 'https://secure.almostcrackd.ai'
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
-        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+        
+        let supabaseClient;
+
+        // Ensuring the client initializes only when the library is ready
+        function getClient() {
+            if (!supabaseClient) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+            }
+            return supabaseClient;
+        }
 
         async function signIn() {
-            await supabaseClient.auth.signInWithOAuth({
+            const client = getClient();
+            await client.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    // Adding '/Hello-World' ensures you land back in YOUR project
                     redirectTo: window.location.origin + '/auth/callback'
+                }
+            })
         }
-    })
-}
 
         async function renderApp() {
             const container = document.getElementById('content-view')
-            const { data: { session } } = await supabaseClient.auth.getSession()
+            const client = getClient();
+            const { data: { session } } = await client.auth.getSession()
 
             if (!session) {
-                // Show original login box
                 container.innerHTML = `
                     <div class="auth-box">
                         <h2>Login to see the memes 🔒</h2>
@@ -139,8 +148,7 @@
                         </button>
                     </div>`
             } else {
-                // Fetch the images now that you are "Authenticated"
-                const { data, error } = await supabaseClient.from('images').select('*')
+                const { data, error } = await client.from('images').select('*')
                 
                 if (error) {
                     container.innerHTML = `<p>Error: ${error.message}</p>`
@@ -149,12 +157,11 @@
 
                 let html = `
                     <div style="text-align: right; margin-bottom: 20px;">
-                        <button class="vote-btn" onclick="supabaseClient.auth.signOut().then(() => location.reload())">Logout</button>
+                        <button class="vote-btn" onclick="getClient().auth.signOut().then(() => location.reload())">Logout</button>
                     </div>
                     <ul>`
                 
                 data.forEach(item => {
-                    // Reach out to shared storage for the polite cat and dog pictures
                     const imageUrl = `https://fshvifvunmcbpbeidvbw.supabase.co/storage/v1/object/public/meme_images/${item.id}.jpg`;
                     
                     html += `
