@@ -39,8 +39,6 @@
         let supabaseClient;
         let allMemes = []; 
         let voteStats = {};
-        
-        // --- NEW GLOBAL USER VARIABLE ---
         let CURRENT_USER_ID = null; 
 
         function getClient() {
@@ -73,13 +71,11 @@
             const searchBar = document.querySelector('.search-wrapper');
             const client = getClient();
             
-            // 1. Get Session ONCE at startup
+            // 1. Get Session ONCE
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
-                // SAVE USER ID GLOBALLY (Critical Fix)
                 CURRENT_USER_ID = session.user.id;
-                
                 searchBar.style.display = 'block'; 
                 await fetchAndShowMemes(client, container);
             } else {
@@ -116,7 +112,7 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch MY VOTES using Global ID
+            // 3. Fetch MY VOTES
             const { data: myVotes } = await client
                 .from('caption_votes')
                 .select('*')
@@ -212,14 +208,14 @@
             });
         }
 
-        // --- INSTANT VOTE HANDLER ---
+        // --- FIXED VOTE HANDLER WITH TIMESTAMP ---
         async function handleVote(captionId, newValue) {
-            // No await here! We use the global variable.
             if (!CURRENT_USER_ID) { alert("Login first!"); return; }
 
             try {
                 const client = getClient();
-                logMsg(`Processing vote for ${captionId.substring(0,4)}...`);
+                const now = new Date().toISOString(); // CURRENT TIME FOR DB
+                logMsg(`Processing vote...`);
 
                 // UI Logic
                 const countSpan = document.getElementById(`count-${captionId}`);
@@ -242,7 +238,7 @@
                     voteStats[captionId].myVote = newValue;
                 }
 
-                // DB Logic using CURRENT_USER_ID
+                // DB Logic
                 const { data: existingVotes, error: checkError } = await client
                     .from('caption_votes')
                     .select('*')
@@ -259,15 +255,23 @@
                         if (error) logMsg("Delete Failed: " + error.message, "red");
                         else logMsg("Vote Removed (Saved)", "#0f0");
                     } else {
-                        const { error } = await client.from('caption_votes').update({ vote_value: newValue }).eq('id', existingVote.id);
+                        // FIX: Add modified timestamp on update
+                        const { error } = await client.from('caption_votes')
+                            .update({ 
+                                vote_value: newValue,
+                                modified_datetime_utc: now 
+                            })
+                            .eq('id', existingVote.id);
                         if (error) logMsg("Update Failed: " + error.message, "red");
                         else logMsg("Vote Switched (Saved)", "#0f0");
                     }
                 } else {
+                    // FIX: Add created timestamp on insert
                     const { error } = await client.from('caption_votes').insert({
                         profile_id: CURRENT_USER_ID,
                         caption_id: captionId,
-                        vote_value: newValue
+                        vote_value: newValue,
+                        created_datetime_utc: now // <--- THIS WAS THE MISSING KEY
                     });
                     if (error) {
                         logMsg("Insert Failed: " + error.message, "red");
