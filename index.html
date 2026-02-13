@@ -18,6 +18,10 @@
         <h1>Brain Rot Central</h1>
         <p class="subtitle">Fresh from the Database</p>
 
+        <div style="text-align: right; font-size: 0.8rem; color: #888; margin-bottom: 10px;">
+            DB Status: <span id="db-status">Connecting...</span> <span id="db-dot" style="height: 10px; width: 10px; background-color: grey; border-radius: 50%; display: inline-block;"></span>
+        </div>
+
         <div class="search-wrapper" style="display: none;">
             <input type="text" id="search-input" placeholder="🔍 Search for vibes, cats, or chaos...">
         </div>
@@ -33,7 +37,7 @@
         
         let supabaseClient;
         let allMemes = []; 
-        let voteStats = {}; // Stores { caption_id: { total: 5, myVote: 1 } }
+        let voteStats = {}; 
 
         function getClient() {
             if (!supabaseClient) {
@@ -93,25 +97,42 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch ALL Votes to calculate totals
-            // We get every single vote in the database to do the math
-            const { data: allVotes } = await client.from('caption_votes').select('*');
+            // 3. Fetch ALL Votes (THE MATH PART)
+            const { data: allVotes, error: voteError } = await client.from('caption_votes').select('*');
             
+            // Debug Indicator Logic
+            const statusText = document.getElementById('db-status');
+            const statusDot = document.getElementById('db-dot');
+
+            if (voteError) {
+                console.error("Critical Vote Fetch Error:", voteError);
+                statusText.innerText = "Error Fetching Votes";
+                statusDot.style.backgroundColor = "red";
+            } else if (!allVotes || allVotes.length === 0) {
+                console.warn("No votes found. DB is empty or RLS is blocking access.");
+                statusText.innerText = "0 Votes Found (Empty or Locked)";
+                statusDot.style.backgroundColor = "orange";
+            } else {
+                console.log(`Success! Loaded ${allVotes.length} votes.`);
+                statusText.innerText = `Loaded ${allVotes.length} Votes`;
+                statusDot.style.backgroundColor = "#4CAF50"; // Green
+            }
+
+            // Calculate Totals
             voteStats = {};
-            
             if (allVotes) {
                 allVotes.forEach(v => {
-                    // Initialize if missing
                     if (!voteStats[v.caption_id]) {
                         voteStats[v.caption_id] = { total: 0, myVote: 0 };
                     }
                     
-                    // Add to total
-                    voteStats[v.caption_id].total += v.vote_value;
+                    // FORCE NUMBER TYPE to avoid string concatenation bugs
+                    const val = parseInt(v.vote_value); 
+                    
+                    voteStats[v.caption_id].total += val;
 
-                    // Check if this vote belongs to me
                     if (v.profile_id === user.id) {
-                        voteStats[v.caption_id].myVote = v.vote_value;
+                        voteStats[v.caption_id].myVote = val;
                     }
                 });
             }
@@ -154,7 +175,7 @@
                 const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
                 const displayUrl = item.imageUrl || fallbackGif;
 
-                // Get stats from our calculation
+                // Get stats
                 const stats = voteStats[item.id] || { total: 0, myVote: 0 };
                 const upActive = stats.myVote === 1 ? 'active up' : '';
                 const downActive = stats.myVote === -1 ? 'active down' : '';
@@ -192,11 +213,10 @@
             const { data: { user } } = await client.auth.getUser();
             if (!user) { alert("Login to vote!"); return; }
 
-            // 1. UI Update (Visual only)
+            // UI Optimistic Update
             const countSpan = document.getElementById(`count-${captionId}`);
             let currentTotal = parseInt(countSpan.innerText) || 0;
             
-            // Get current user vote from our local stats object
             if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
             const currentVoteValue = voteStats[captionId].myVote;
 
@@ -217,7 +237,8 @@
                 voteStats[captionId].myVote = newValue;
             }
 
-            // 2. Database Sync
+            // Database Sync
+            // 1. Check for existing vote
             const { data: existingVotes } = await client
                 .from('caption_votes')
                 .select('*')
@@ -238,10 +259,9 @@
                     caption_id: captionId,
                     vote_value: newValue 
                 });
-                
                 if (error) {
                     console.error("Insert Failed:", error);
-                    updateUIColors(captionId, 0); // Revert on error
+                    updateUIColors(captionId, 0);
                 }
             }
         }
