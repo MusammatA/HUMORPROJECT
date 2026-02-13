@@ -161,7 +161,7 @@
             });
         }
 
-        // --- THE "X-RAY" VERSION OF SHOWMEMES ---
+        // --- FINAL WORKING VERSION ---
         async function showMemes(client, container) {
             const { data, error } = await client.from('captions').select('*')
             
@@ -186,14 +186,19 @@
                 <ul>`
             
             data.forEach(item => {
-                // We are intentionally printing the raw data here so you can see the column names
+                // 1. KEY FIX: Using 'image_id' because 'id' belongs to the caption, not the image
+                const { data: { publicUrl } } = client
+                    .storage
+                    .from('meme_images')
+                    .getPublicUrl(`${item.image_id}.jpg`);
+
                 html += `
                     <li>
+                        <img src="${publicUrl}" class="meme-image" alt="Meme" onerror="this.style.display='none'">
                         <div class="card-content">
-                            ✨ ${item.content || "Text Missing"}
-                            <hr style="margin: 15px 0; border: 1px dashed #ccc;">
-                            <p style="font-weight: bold; color: #d14;">🔍 DATA X-RAY:</p>
-                            <pre style="background: #eee; padding: 10px; font-size: 0.8rem; overflow-x: auto;">${JSON.stringify(item, null, 2)}</pre>
+                            ✨ ${item.content}
+                            <br>
+                            <small style="font-size: 0.7rem; color: #888;">ID: ${item.id.substring(0,8)}</small>
                         </div>
                     </li>`
             })
