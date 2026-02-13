@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brain Rot Central</title>
+    <title>Brain Rot Central - DIAGNOSTIC MODE</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,11 +16,16 @@
 
     <div class="container">
         <h1>Brain Rot Central</h1>
-        <p class="subtitle">Fresh from the Database</p>
-
-        <div id="debug-box" style="background: #ffebeb; border: 2px solid red; padding: 20px; display: none; margin-bottom: 20px; border-radius: 10px;">
-            <h3 style="color: red; margin-top: 0;">⚠️ Debug Error Log:</h3>
-            <p id="debug-text" style="font-family: monospace;">No errors yet...</p>
+        
+        <div id="debug-box" style="background: #222; color: #0f0; padding: 20px; margin-bottom: 30px; border-radius: 10px; font-family: monospace; border: 4px solid red;">
+            <h3 style="color: red; margin-top: 0; text-transform: uppercase;">⚠️ Database X-Ray</h3>
+            <p><strong>Status:</strong> <span id="auth-status">Checking Auth...</span></p>
+            <hr style="border-color: #444;">
+            <p><strong>Attempting to Read 'caption_votes' Table:</strong></p>
+            <pre id="schema-log" style="white-space: pre-wrap;">Scanning...</pre>
+            <hr style="border-color: #444;">
+            <p><strong>Last Action Log:</strong></p>
+            <p id="action-log" style="color: #ff8ba7;">Waiting for you to click a vote button...</p>
         </div>
 
         <div class="search-wrapper" style="display: none;">
@@ -28,7 +33,7 @@
         </div>
 
         <div id="content-view">
-            <p style="text-align: center;">Loading the vibes...</p>
+            <p style="text-align: center;">Loading...</p>
         </div>
     </div>
 
@@ -55,17 +60,41 @@
             })
         }
         
+        // --- DIAGNOSTIC TOOL: RUNS ON LOAD ---
+        async function runDiagnostics(client) {
+            const schemaLog = document.getElementById('schema-log');
+            
+            // 1. Try to fetch ONE vote to see the columns
+            const { data, error } = await client.from('caption_votes').select('*').limit(1);
+            
+            if (error) {
+                schemaLog.innerText = `❌ ERROR READING TABLE: \n${error.message}\n(Hint: This might be RLS permissions)`;
+                schemaLog.style.color = 'red';
+            } else if (data.length > 0) {
+                const columns = Object.keys(data[0]).join(', ');
+                schemaLog.innerText = `✅ SUCCESS! Columns found:\n[ ${columns} ]\n\nSample Row:\n${JSON.stringify(data[0], null, 2)}`;
+                schemaLog.style.color = '#0f0';
+            } else {
+                schemaLog.innerText = `⚠️ Table is empty (0 rows). \nWe cannot see column names until we successfully add a row.\n\n👉 PLEASE CLICK AN UPVOTE BUTTON TO FORCE AN INSERT.`;
+                schemaLog.style.color = 'orange';
+            }
+        }
+
         async function renderApp() {
             const container = document.getElementById('content-view');
             const searchBar = document.querySelector('.search-wrapper');
+            const authStatus = document.getElementById('auth-status');
             const client = getClient();
             
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
+                authStatus.innerText = `Logged in as: ${session.user.email}`;
                 searchBar.style.display = 'block'; 
+                await runDiagnostics(client); // Run the X-Ray
                 await fetchAndShowMemes(client, container, session.user);
             } else {
+                authStatus.innerText = "Not Logged In";
                 searchBar.style.display = 'none'; 
                 container.innerHTML = `
                     <div class="auth-box">
@@ -78,58 +107,42 @@
 
             client.auth.onAuthStateChange(async (event, currentSession) => {
                 if (currentSession) {
-                    searchBar.style.display = 'block';
-                    await fetchAndShowMemes(client, container, currentSession.user);
+                    window.location.reload(); // Force reload to run diagnostics clean
                 }
             });
         }
 
         async function fetchAndShowMemes(client, container, user) {
-            // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
             if (error) {
-                showDebugError("Caption Fetch Error: " + error.message);
+                container.innerHTML = `<p>Error loading vibes: ${error.message}</p>`;
                 return;
             }
 
-            // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
             const { data: images } = await client.from('images').select('id, url').in('id', imageIds);
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch User's Existing Votes
-            // FIX: Changed 'user_id' to 'profile_id'
-            const { data: votes, error: voteError } = await client
-                .from('caption_votes')
-                .select('*')
-                .eq('profile_id', user.id); 
-            
-            if (voteError) console.error("Error fetching votes:", voteError);
+            // Fetch Votes - Try catch to prevent crash
+            let votes = [];
+            try {
+                // We assume 'profile_id' for now based on Captions table
+                const response = await client.from('caption_votes').select('*').eq('profile_id', user.id);
+                votes = response.data || [];
+            } catch (e) {
+                console.error("Vote fetch failed", e);
+            }
 
             userVotes = {};
             if (votes) votes.forEach(v => userVotes[v.caption_id] = v.value);
 
-            // 4. Merge Data
             allMemes = captions.map(item => ({
                 ...item,
                 imageUrl: imageMap[item.image_id] || null
             }));
 
             renderGrid(allMemes, container);
-
-            // Search Listener
-            const searchInput = document.getElementById('search-input');
-            const newSearch = searchInput.cloneNode(true);
-            searchInput.parentNode.replaceChild(newSearch, searchInput);
-            
-            newSearch.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                const filtered = allMemes.filter(meme => 
-                    meme.content && meme.content.toLowerCase().includes(searchTerm)
-                );
-                renderGrid(filtered, container);
-            });
         }
 
         function renderGrid(memes, container) {
@@ -147,7 +160,6 @@
             memes.forEach(item => {
                 const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
                 const displayUrl = item.imageUrl || fallbackGif;
-
                 const myVote = userVotes[item.id] || 0; 
                 const upActive = myVote === 1 ? 'active up' : '';
                 const downActive = myVote === -1 ? 'active down' : '';
@@ -166,9 +178,7 @@
                                 <button class="vote-btn ${upActive} up-btn" onclick="handleVote('${item.id}', 1)">
                                     <i class="fa-solid fa-arrow-up"></i>
                                 </button>
-                                
                                 <span class="vote-count" id="count-${item.id}">${item.votes || 0}</span>
-                                
                                 <button class="vote-btn ${downActive} down-btn" onclick="handleVote('${item.id}', -1)">
                                     <i class="fa-solid fa-arrow-down"></i>
                                 </button>
@@ -180,13 +190,15 @@
             container.innerHTML = html + `</ul>`;
         }
 
-        // --- FIXED VOTE LOGIC WITH CORRECT COLUMN NAME ---
         async function handleVote(captionId, newValue) {
             const client = getClient();
             const { data: { user } } = await client.auth.getUser();
-            if (!user) { alert("Login to vote!"); return; }
+            const log = document.getElementById('action-log');
+            
+            log.innerText = "⏳ Attempting to vote...";
+            log.style.color = "yellow";
 
-            // 1. UI Update (Visual only)
+            // 1. UI Update (Visual)
             const countSpan = document.getElementById(`count-${captionId}`);
             let currentTotal = parseInt(countSpan.innerText) || 0;
             const currentVoteValue = userVotes[captionId] || 0;
@@ -205,16 +217,21 @@
                 userVotes[captionId] = newValue;
             }
 
-            // 2. Database Sync
-            // FIX: Using 'profile_id' instead of 'user_id'
-            const { data: existingVotes, error: checkError } = await client
+            // 2. Database Action with PROFILE_ID
+            // We use upsert for simplicity in this test
+            log.innerText = "⏳ Sending to DB with 'profile_id'...";
+
+            // First check if row exists to decide insert vs update/delete
+             const { data: existingVotes, error: checkError } = await client
                 .from('caption_votes')
                 .select('*')
                 .eq('profile_id', user.id)
                 .eq('caption_id', captionId);
 
             if (checkError) {
-                showDebugError("DB Check Error: " + checkError.message);
+                log.innerText = `❌ CHECK FAILED: ${checkError.message}`;
+                log.style.color = "red";
+                alert(`DB Error: ${checkError.message}`);
                 return;
             }
 
@@ -224,32 +241,48 @@
                 if (existingVote.value === newValue) {
                     // DELETE
                     const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
-                    if (error) showDebugError("DELETE FAILED: " + error.message);
+                    if (error) {
+                        log.innerText = `❌ DELETE FAILED: ${error.message}`;
+                        log.style.color = "red";
+                    } else {
+                        log.innerText = `✅ Vote Removed!`;
+                        log.style.color = "#0f0";
+                    }
                 } else {
                     // UPDATE
                     const { error } = await client.from('caption_votes').update({ value: newValue }).eq('id', existingVote.id);
-                    if (error) showDebugError("UPDATE FAILED: " + error.message);
+                    if (error) {
+                         log.innerText = `❌ UPDATE FAILED: ${error.message}`;
+                         log.style.color = "red";
+                    } else {
+                         log.innerText = `✅ Vote Switched!`;
+                         log.style.color = "#0f0";
+                    }
                 }
             } else {
                 // INSERT
-                // FIX: Inserting with 'profile_id'
                 const { error } = await client.from('caption_votes').insert({
-                    profile_id: user.id, // Corrected from user_id
+                    profile_id: user.id, // Trying profile_id
                     caption_id: captionId,
                     value: newValue
                 });
-                
+
                 if (error) {
-                    showDebugError("INSERT FAILED: " + error.message);
-                    updateUIColors(captionId, 0); 
+                    log.innerText = `❌ INSERT FAILED: ${error.message}`;
+                    log.style.color = "red";
+                    alert(`DB Error: ${error.message}`);
+                    // Revert UI
+                    updateUIColors(captionId, 0);
                 } else {
-                    console.log("Vote successfully recorded.");
+                    log.innerText = `✅ INSERT SUCCESS! The column is definitely 'profile_id'.`;
+                    log.style.color = "#0f0";
                 }
             }
         }
 
         function updateUIColors(captionId, value) {
             const card = document.getElementById(`card-${captionId}`);
+            if (!card) return;
             const upBtn = card.querySelector('.up-btn');
             const downBtn = card.querySelector('.down-btn');
 
@@ -258,14 +291,6 @@
 
             if (value === 1) upBtn.classList.add('active', 'up');
             if (value === -1) downBtn.classList.add('active', 'down');
-        }
-
-        function showDebugError(msg) {
-            const box = document.getElementById('debug-box');
-            const text = document.getElementById('debug-text');
-            box.style.display = 'block';
-            text.innerText = msg;
-            alert("⚠️ " + msg);
         }
 
         renderApp()
