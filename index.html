@@ -71,7 +71,6 @@
             const searchBar = document.querySelector('.search-wrapper');
             const client = getClient();
             
-            // 1. Get Session ONCE
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
@@ -99,8 +98,8 @@
         }
 
         async function fetchAndShowMemes(client, container) {
-            logMsg(`Logged in as User: ${CURRENT_USER_ID}`);
-            logMsg("Loading Memes...");
+            logMsg(`User: ${CURRENT_USER_ID.substring(0,5)}...`);
+            logMsg("Loading Data...");
 
             // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
@@ -112,33 +111,45 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch MY VOTES
-            const { data: myVotes } = await client
+            // 3. FETCH ALL VOTES (Brute Force Approach)
+            // We fetch up to 2000 votes and filter them manually in JS
+            // This bypasses the DB filtering bug.
+            const { data: allVotes, error: voteError } = await client
                 .from('caption_votes')
                 .select('*')
-                .eq('profile_id', CURRENT_USER_ID);
+                .limit(2000); 
 
-            logMsg(`Loaded ${myVotes ? myVotes.length : 0} of your votes.`);
+            if (voteError) {
+                logMsg("Vote Read Error: " + voteError.message, "red");
+            }
 
-            // 4. Fetch Global Totals
-            const { data: allVotes } = await client.from('caption_votes').select('caption_id, vote_value').limit(1000);
-
-            // 5. Calculate Stats
+            // 4. Calculate Stats & Find MY Votes
             voteStats = {};
+            let myVoteCount = 0;
+
             if (allVotes) {
                 allVotes.forEach(v => {
-                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    voteStats[v.caption_id].total += parseInt(v.vote_value);
-                });
-            }
-            if (myVotes) {
-                myVotes.forEach(v => {
-                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    voteStats[v.caption_id].myVote = parseInt(v.vote_value);
+                    // Initialize stats for this caption
+                    if (!voteStats[v.caption_id]) {
+                        voteStats[v.caption_id] = { total: 0, myVote: 0 };
+                    }
+
+                    // Add to Global Total
+                    const val = parseInt(v.vote_value);
+                    voteStats[v.caption_id].total += val;
+
+                    // CHECK IF THIS IS MY VOTE (Javascript Filter)
+                    // We compare strings to be safe
+                    if (v.profile_id === CURRENT_USER_ID) {
+                        voteStats[v.caption_id].myVote = val;
+                        myVoteCount++;
+                    }
                 });
             }
 
-            // 6. Render
+            logMsg(`Found ${myVoteCount} of your votes via JS Filter.`);
+
+            // 5. Render
             allMemes = captions.map(item => ({
                 ...item,
                 imageUrl: imageMap[item.image_id] || null
@@ -146,7 +157,6 @@
 
             renderGrid(allMemes, container);
             setupSearch(allMemes, container);
-            logMsg("Ready! Click a button.", "cyan");
         }
 
         function renderGrid(memes, container) {
@@ -208,19 +218,18 @@
             });
         }
 
-        // --- FIXED VOTE HANDLER WITH TIMESTAMP ---
+        // --- HANDLER WITH .select() VERIFICATION ---
         async function handleVote(captionId, newValue) {
             if (!CURRENT_USER_ID) { alert("Login first!"); return; }
 
             try {
                 const client = getClient();
-                const now = new Date().toISOString(); // CURRENT TIME FOR DB
+                const now = new Date().toISOString(); 
                 logMsg(`Processing vote...`);
 
-                // UI Logic
+                // UI Update
                 const countSpan = document.getElementById(`count-${captionId}`);
                 let currentTotal = parseInt(countSpan.innerText) || 0;
-                
                 if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
                 const currentVoteValue = voteStats[captionId].myVote;
 
@@ -238,46 +247,44 @@
                     voteStats[captionId].myVote = newValue;
                 }
 
-                // DB Logic
-                const { data: existingVotes, error: checkError } = await client
+                // DB Logic (Find Existing)
+                // Filter manually for safety again
+                const { data: allCaptionVotes, error: fetchErr } = await client
                     .from('caption_votes')
                     .select('*')
-                    .eq('profile_id', CURRENT_USER_ID)
                     .eq('caption_id', captionId);
 
-                if (checkError) throw checkError;
+                if (fetchErr) throw fetchErr;
 
-                const existingVote = existingVotes && existingVotes.length > 0 ? existingVotes[0] : null;
+                // Manual JS Filter to find MY vote
+                const existingVote = allCaptionVotes.find(v => v.profile_id === CURRENT_USER_ID);
 
                 if (existingVote) {
                     if (existingVote.vote_value === newValue) {
                         const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
                         if (error) logMsg("Delete Failed: " + error.message, "red");
-                        else logMsg("Vote Removed (Saved)", "#0f0");
+                        else logMsg("Vote Removed!", "#0f0");
                     } else {
-                        // FIX: Add modified timestamp on update
                         const { error } = await client.from('caption_votes')
-                            .update({ 
-                                vote_value: newValue,
-                                modified_datetime_utc: now 
-                            })
+                            .update({ vote_value: newValue, modified_datetime_utc: now })
                             .eq('id', existingVote.id);
                         if (error) logMsg("Update Failed: " + error.message, "red");
-                        else logMsg("Vote Switched (Saved)", "#0f0");
+                        else logMsg("Vote Updated!", "#0f0");
                     }
                 } else {
-                    // FIX: Add created timestamp on insert
-                    const { error } = await client.from('caption_votes').insert({
+                    // Use .select() to PROVE it saved
+                    const { data: newRow, error } = await client.from('caption_votes').insert({
                         profile_id: CURRENT_USER_ID,
                         caption_id: captionId,
                         vote_value: newValue,
-                        created_datetime_utc: now // <--- THIS WAS THE MISSING KEY
-                    });
+                        created_datetime_utc: now
+                    }).select(); 
+
                     if (error) {
                         logMsg("Insert Failed: " + error.message, "red");
                         updateUIColors(captionId, 0); 
                     } else {
-                        logMsg("New Vote Added (Saved)", "#0f0");
+                        logMsg(`Saved! (ID: ${newRow[0].id})`, "#0f0");
                     }
                 }
 
