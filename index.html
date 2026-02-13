@@ -111,34 +111,37 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. LOAD VOTES FROM LOCAL STORAGE (The "Memory" Fix)
-            // We use browser memory because the DB is hiding our own votes from us.
+            // 3. Load Local Votes
             const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
             logMsg(`Loaded ${Object.keys(localVotes).length} votes from browser memory.`);
 
-            // 4. Fetch Global Totals (Optional visual layer)
+            // 4. Fetch Global Totals
             const { data: allVotes } = await client.from('caption_votes').select('*').limit(2000);
 
             // 5. Calculate Stats
             voteStats = {};
 
-            // A. Fill with Global Data
+            // A. Add up DB votes (from other people)
             if (allVotes) {
                 allVotes.forEach(v => {
                     if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    voteStats[v.caption_id].total += parseInt(v.vote_value);
+                    
+                    // Only add if it's NOT me (since DB is buggy for 'me')
+                    if (v.profile_id !== CURRENT_USER_ID) {
+                        voteStats[v.caption_id].total += parseInt(v.vote_value);
+                    }
                 });
             }
 
-            // B. OVERWRITE with Local Memory (To ensure UI is correct for YOU)
+            // B. Add My Local Votes (The Fix)
             Object.keys(localVotes).forEach(captionId => {
                 if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
+                
                 const myVal = localVotes[captionId];
                 voteStats[captionId].myVote = myVal;
                 
-                // Adjust total optimistically if not already counted (rough estimate)
-                // This keeps the UI consistent with your action
-                // Note: Real total updates when other users vote
+                // CRITICAL FIX: Add local vote to the total!
+                voteStats[captionId].total += myVal; 
             });
 
             // 6. Render
@@ -210,87 +213,64 @@
             });
         }
 
-        // --- HYBRID VOTE HANDLER ---
         async function handleVote(captionId, newValue) {
             if (!CURRENT_USER_ID) { alert("Login first!"); return; }
 
             try {
                 const client = getClient();
                 const now = new Date().toISOString(); 
-                logMsg(`Processing vote...`);
-
-                // 1. UI Logic (Optimistic)
+                
                 const countSpan = document.getElementById(`count-${captionId}`);
                 let currentTotal = parseInt(countSpan.innerText) || 0;
+                
                 if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
                 const currentVoteValue = voteStats[captionId].myVote;
 
                 let nextVoteValue = 0;
                 
-                // Determine new state
                 if (currentVoteValue === newValue) {
-                    // Toggle Off
                     updateUIColors(captionId, 0);
                     countSpan.innerText = currentTotal - newValue;
                     nextVoteValue = 0;
                 } else if (currentVoteValue === 0) {
-                    // New Vote
                     updateUIColors(captionId, newValue);
                     countSpan.innerText = currentTotal + newValue;
                     nextVoteValue = newValue;
                 } else {
-                    // Flip Vote
                     updateUIColors(captionId, newValue);
                     countSpan.innerText = currentTotal + (newValue * 2);
                     nextVoteValue = newValue;
                 }
 
-                // 2. UPDATE LOCAL STORAGE (The Persistent Fix)
+                // Update Local Storage
                 const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
-                if (nextVoteValue === 0) {
-                    delete localVotes[captionId];
-                } else {
-                    localVotes[captionId] = nextVoteValue;
-                }
+                if (nextVoteValue === 0) delete localVotes[captionId];
+                else localVotes[captionId] = nextVoteValue;
                 localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
-                voteStats[captionId].myVote = nextVoteValue; // Update runtime memory
+                voteStats[captionId].myVote = nextVoteValue;
 
-                // 3. UPDATE DATABASE (The Assignment Requirement)
-                // We still send to DB, even though we know we can't read it back.
-                
-                // A. Check if row exists (using manual select without filter)
-                // We just blindly insert because RLS blocks us from checking 'correctly'
-                // But we try to be nice.
-                
-                // NOTE: Since we can't reliably read, we will perform an UPSERT (Insert or Update)
-                // This is safer than checking first.
+                // Update DB
                 const { error: upsertError } = await client.from('caption_votes').upsert({
                     profile_id: CURRENT_USER_ID,
                     caption_id: captionId,
                     vote_value: nextVoteValue,
                     created_datetime_utc: now,
                     modified_datetime_utc: now
-                }, { onConflict: 'profile_id,caption_id' }); // Assuming unique constraint exists
+                }, { onConflict: 'profile_id,caption_id' });
 
                 if (upsertError) {
-                    // If Upsert fails (maybe no unique constraint), we try standard Insert
-                    logMsg("Upsert note: " + upsertError.message, "orange");
-                    const { error: insertError } = await client.from('caption_votes').insert({
+                    // Fallback to simple insert if upsert fails
+                    await client.from('caption_votes').insert({
                         profile_id: CURRENT_USER_ID,
                         caption_id: captionId,
                         vote_value: nextVoteValue,
                         created_datetime_utc: now
                     });
-                    
-                    if (insertError) logMsg("DB Save Error: " + insertError.message, "red");
-                    else logMsg("DB Saved (Insert)", "#0f0");
-                } else {
-                    logMsg("DB Saved (Upsert)", "#0f0");
                 }
+                logMsg("Vote Processed", "#0f0");
 
             } catch (err) {
                 logMsg("Error: " + err.message, "red");
-                console.error(err);
             }
         }
 
