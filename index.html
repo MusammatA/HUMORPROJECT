@@ -34,6 +34,7 @@
         
         let supabaseClient;
         let allMemes = []; 
+        let userVotes = {}; // We will store the current user's votes here
 
         function getClient() {
             if (!supabaseClient) {
@@ -56,7 +57,7 @@
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
-                await fetchAndShowMemes(client, container);
+                await fetchAndShowMemes(client, container, session.user);
             } else {
                 container.innerHTML = `
                     <div class="auth-box">
@@ -68,23 +69,35 @@
             }
 
             client.auth.onAuthStateChange(async (event, currentSession) => {
-                if (currentSession) await fetchAndShowMemes(client, container);
+                if (currentSession) await fetchAndShowMemes(client, container, currentSession.user);
             });
         }
 
-        async function fetchAndShowMemes(client, container) {
+        async function fetchAndShowMemes(client, container, user) {
+            // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
             if (error || !captions) {
                 container.innerHTML = `<p>Error loading vibes.</p>`;
                 return;
             }
 
+            // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
             const { data: images } = await client.from('images').select('id, url').in('id', imageIds);
-            
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
+            // 3. NEW: Fetch User's Existing Votes (So we can highlight the buttons)
+            const { data: votes } = await client
+                .from('caption_votes')
+                .select('*')
+                .eq('user_id', user.id);
+            
+            // Store votes in a simple object for lookup: { caption_id: 1 } (or -1)
+            userVotes = {};
+            if (votes) votes.forEach(v => userVotes[v.caption_id] = v.value);
+
+            // 4. Merge Data
             allMemes = captions.map(item => ({
                 ...item,
                 imageUrl: imageMap[item.image_id] || null
@@ -103,7 +116,7 @@
 
         function renderGrid(memes, container) {
             if (memes.length === 0) {
-                container.innerHTML = `<p style="text-align:center;">No vibes found matching that search. 😔</p>`;
+                container.innerHTML = `<p style="text-align:center;">No vibes found. 😔</p>`;
                 return;
             }
 
@@ -117,6 +130,11 @@
                 const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
                 const displayUrl = item.imageUrl || fallbackGif;
 
+                // Check if user has voted on this specific meme
+                const myVote = userVotes[item.id] || 0; 
+                const upActive = myVote === 1 ? 'active up' : '';
+                const downActive = myVote === -1 ? 'active down' : '';
+
                 html += `
                     <li id="card-${item.id}">
                         <img src="${displayUrl}" class="meme-image" alt="Meme" 
@@ -127,51 +145,83 @@
                         </div>
 
                         <div class="actions">
-                            <button class="like-btn" onclick="toggleLike('${item.id}')">
-                                <i class="fa-solid fa-heart"></i> 
-                                <span id="likes-${item.id}">${item.like_count || 0}</span>
-                            </button>
-                            <small style="color:#aaa;">ID: ${item.id.substring(0,4)}</small>
-                        </div>
-
-                        <div class="comments-section">
-                            <div class="comment-list" id="comments-${item.id}"></div>
-                            <div class="comment-input-group">
-                                <input type="text" class="comment-input" id="input-${item.id}" placeholder="Say something...">
-                                <button class="post-btn" onclick="postComment('${item.id}')">Post</button>
+                            <div class="vote-controls">
+                                <button class="vote-btn ${upActive}" onclick="handleVote('${item.id}', 1)">
+                                    <i class="fa-solid fa-arrow-up"></i>
+                                </button>
+                                
+                                <span class="vote-count" id="count-${item.id}">${item.votes || 0}</span>
+                                
+                                <button class="vote-btn ${downActive}" onclick="handleVote('${item.id}', -1)">
+                                    <i class="fa-solid fa-arrow-down"></i>
+                                </button>
                             </div>
+                            <small style="color:#aaa;">ID: ${item.id.substring(0,4)}</small>
                         </div>
                     </li>`;
             });
             container.innerHTML = html + `</ul>`;
         }
 
-        function toggleLike(id) {
-            const btn = document.querySelector(`#card-${id} .like-btn`);
-            const countSpan = document.getElementById(`likes-${id}`);
+        // --- THE MUTATION LOGIC (Assignment Requirement) ---
+        async function handleVote(captionId, newValue) {
+            const client = getClient();
             
-            btn.classList.toggle('liked');
-            let current = parseInt(countSpan.innerText);
-            
-            if (btn.classList.contains('liked')) {
-                countSpan.innerText = current + 1;
-            } else {
-                countSpan.innerText = current - 1;
+            // 1. Get current user
+            const { data: { user } } = await client.auth.getUser();
+            if (!user) { alert("Please login to vote!"); return; }
+
+            // 2. Check if we already voted on this caption
+            const { data: existingVote } = await client
+                .from('caption_votes')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('caption_id', captionId)
+                .single(); // .single() returns one object or null
+
+            try {
+                if (existingVote) {
+                    // SCENARIO A: We voted before.
+                    if (existingVote.value === newValue) {
+                        // If we clicked the SAME button, we remove the vote (Toggle off)
+                        await client.from('caption_votes').delete().eq('id', existingVote.id);
+                        console.log("Vote removed!");
+                        updateLocalUI(captionId, 0); // Reset UI
+                    } else {
+                        // If we clicked the OPPOSITE button, we update the vote (Flip)
+                        await client.from('caption_votes').update({ value: newValue }).eq('id', existingVote.id);
+                        console.log("Vote updated!");
+                        updateLocalUI(captionId, newValue); // Update UI
+                    }
+                } else {
+                    // SCENARIO B: No previous vote. Create a new one.
+                    await client.from('caption_votes').insert({
+                        user_id: user.id,
+                        caption_id: captionId,
+                        value: newValue
+                    });
+                    console.log("Vote added!");
+                    updateLocalUI(captionId, newValue); // Update UI
+                }
+            } catch (error) {
+                console.error("Mutation failed:", error);
+                alert("Something went wrong with the vote!");
             }
         }
 
-        function postComment(id) {
-            const input = document.getElementById(`input-${id}`);
-            const list = document.getElementById(`comments-${id}`);
-            const text = input.value.trim();
+        // Helper to update the button colors immediately (Optimistic UI)
+        function updateLocalUI(captionId, value) {
+            const card = document.getElementById(`card-${captionId}`);
+            const upBtn = card.querySelector('.fa-arrow-up').parentElement;
+            const downBtn = card.querySelector('.fa-arrow-down').parentElement;
 
-            if (text) {
-                const newComment = document.createElement('div');
-                newComment.style.marginBottom = "5px";
-                newComment.innerHTML = `<strong>Anon:</strong> ${text}`;
-                list.appendChild(newComment);
-                input.value = ''; 
-            }
+            // Reset classes
+            upBtn.className = 'vote-btn';
+            downBtn.className = 'vote-btn';
+
+            // Apply new active class
+            if (value === 1) upBtn.classList.add('active', 'up');
+            if (value === -1) downBtn.classList.add('active', 'down');
         }
 
         renderApp()
