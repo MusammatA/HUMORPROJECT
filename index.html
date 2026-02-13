@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brain Rot Central</title>
+    <title>Brain Rot Central - MATH DEBUG</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,8 +27,8 @@
         </div>
     </div>
 
-    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; background: #222; color: #0f0; font-family: monospace; font-size: 12px; overflow-y: scroll; padding: 10px; border-top: 4px solid #444; z-index: 9999; display: none;">
-        <div><strong>Status Log:</strong></div>
+    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 200px; background: #222; color: #0f0; font-family: monospace; font-size: 11px; overflow-y: scroll; padding: 10px; border-top: 4px solid #444; z-index: 9999; display: none;">
+        <div><strong>Math Debug Log:</strong></div>
         <div id="log-content"></div>
     </div>
 
@@ -54,6 +54,7 @@
             box.style.display = 'block';
             const line = document.createElement('div');
             line.style.color = color;
+            line.style.borderBottom = "1px solid #333";
             line.innerText = `> ${msg}`;
             content.prepend(line);
         }
@@ -99,11 +100,12 @@
 
         async function fetchAndShowMemes(client, container) {
             logMsg(`User: ${CURRENT_USER_ID.substring(0,5)}...`);
-            logMsg("Loading Data...");
+            logMsg("1. Loading Captions...");
 
             // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
             if (error) { logMsg("Error captions: " + error.message, "red"); return; }
+            logMsg(`Loaded ${captions.length} captions.`);
 
             // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
@@ -113,7 +115,14 @@
 
             // 3. Load Local Votes
             const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
-            logMsg(`Loaded ${Object.keys(localVotes).length} votes from browser memory.`);
+            const localKeys = Object.keys(localVotes);
+            logMsg(`2. Browser Memory: Found ${localKeys.length} votes.`);
+            
+            // DEBUG: Print Local Keys
+            if (localKeys.length > 0) {
+                logMsg(`Sample Key: ${localKeys[0]}`, "cyan");
+                logMsg(`Sample Value: ${localVotes[localKeys[0]]}`, "cyan");
+            }
 
             // 4. Fetch Global Totals
             const { data: allVotes } = await client.from('caption_votes').select('*').limit(2000);
@@ -121,28 +130,37 @@
             // 5. Calculate Stats
             voteStats = {};
 
-            // A. Add up DB votes (from other people)
+            // A. Add up DB votes
             if (allVotes) {
                 allVotes.forEach(v => {
                     if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
                     
-                    // Only add if it's NOT me (since DB is buggy for 'me')
+                    // Only add if it's NOT me
                     if (v.profile_id !== CURRENT_USER_ID) {
                         voteStats[v.caption_id].total += parseInt(v.vote_value);
                     }
                 });
             }
 
-            // B. Add My Local Votes (The Fix)
-            Object.keys(localVotes).forEach(captionId => {
+            // B. Add My Local Votes (FORCE NUMBER)
+            let appliedCount = 0;
+            localKeys.forEach(captionId => {
                 if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
                 
-                const myVal = localVotes[captionId];
-                voteStats[captionId].myVote = myVal;
+                const myVal = Number(localVotes[captionId]); // Force Number
                 
-                // CRITICAL FIX: Add local vote to the total!
-                voteStats[captionId].total += myVal; 
+                const oldTotal = voteStats[captionId].total;
+                voteStats[captionId].myVote = myVal;
+                voteStats[captionId].total += myVal;
+                
+                if (appliedCount < 3) {
+                     logMsg(`MATH SUCCESS for ID ${captionId.substring(0,4)}: ${oldTotal} + ${myVal} = ${voteStats[captionId].total}`, "#0f0");
+                }
+                appliedCount++;
             });
+
+            if (appliedCount === 0) logMsg("⚠️ No local votes applied to Math.", "orange");
+            else logMsg(`✅ Applied local math to ${appliedCount} cards.`);
 
             // 6. Render
             allMemes = captions.map(item => ({
@@ -171,6 +189,8 @@
                 const displayUrl = item.imageUrl || fallbackGif;
                 
                 const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+                
+                // FORCE CLASSES based on voteStats
                 const upActive = stats.myVote === 1 ? 'active up' : '';
                 const downActive = stats.myVote === -1 ? 'active down' : '';
 
@@ -213,6 +233,7 @@
             });
         }
 
+        // --- HANDLER ---
         async function handleVote(captionId, newValue) {
             if (!CURRENT_USER_ID) { alert("Login first!"); return; }
 
@@ -248,8 +269,10 @@
                 else localVotes[captionId] = nextVoteValue;
                 localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
                 voteStats[captionId].myVote = nextVoteValue;
+                
+                logMsg(`Saved to memory: ${nextVoteValue} for ${captionId.substring(0,4)}`);
 
-                // Update DB
+                // Update DB (Blind Upsert)
                 const { error: upsertError } = await client.from('caption_votes').upsert({
                     profile_id: CURRENT_USER_ID,
                     caption_id: captionId,
@@ -259,7 +282,6 @@
                 }, { onConflict: 'profile_id,caption_id' });
 
                 if (upsertError) {
-                    // Fallback to simple insert if upsert fails
                     await client.from('caption_votes').insert({
                         profile_id: CURRENT_USER_ID,
                         caption_id: captionId,
@@ -267,7 +289,6 @@
                         created_datetime_utc: now
                     });
                 }
-                logMsg("Vote Processed", "#0f0");
 
             } catch (err) {
                 logMsg("Error: " + err.message, "red");
