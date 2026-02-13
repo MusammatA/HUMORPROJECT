@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brain Rot Central</title>
+    <title>Brain Rot Central - TRACE MODE</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,8 +27,8 @@
         </div>
     </div>
 
-    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; background: #222; color: #0f0; font-family: monospace; font-size: 12px; overflow-y: scroll; padding: 10px; border-top: 4px solid #444; z-index: 9999; display: none;">
-        <div><strong>Action Log (Click buttons to see events here):</strong></div>
+    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 200px; background: #111; color: #0f0; font-family: monospace; font-size: 13px; overflow-y: scroll; padding: 10px; border-top: 4px solid #f0f; z-index: 9999; display: none;">
+        <div><strong>TRACE LOG (Tell me the last number you see):</strong></div>
         <div id="log-content"></div>
     </div>
 
@@ -47,7 +47,6 @@
             return supabaseClient;
         }
         
-        // Helper to print to the black box
         function logMsg(msg, color = "#0f0") {
             const box = document.getElementById('click-logger');
             const content = document.getElementById('log-content');
@@ -98,14 +97,11 @@
         }
 
         async function fetchAndShowMemes(client, container, user) {
-            logMsg("Fetching Data...");
+            logMsg("Step 0: Loading Page...");
 
             // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
-            if (error) {
-                logMsg("Error fetching captions: " + error.message, "red");
-                return;
-            }
+            if (error) { logMsg("Error captions: " + error.message, "red"); return; }
 
             // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
@@ -113,31 +109,18 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch MY VOTES Separately (Fixes the 1000 limit bug)
-            logMsg("Fetching YOUR specific votes...", "yellow");
+            // 3. Fetch MY VOTES
+            logMsg("Step 0.5: Fetching votes...");
             const { data: myVotes, error: myVoteError } = await client
                 .from('caption_votes')
                 .select('*')
-                .eq('profile_id', user.id); // Get ONLY my votes
+                .eq('profile_id', user.id);
 
-            if (myVoteError) logMsg("Error fetching my votes: " + myVoteError.message, "red");
-            else logMsg(`Found ${myVotes.length} votes by you.`);
+            if (myVoteError) logMsg("Vote Error: " + myVoteError.message, "red");
+            else logMsg(`Found ${myVotes.length} previous votes.`);
 
-            // 4. Fetch Global Totals (Still hits 1000 limit, but less critical for UI state)
-            const { data: allVotes } = await client.from('caption_votes').select('caption_id, vote_value').limit(1000);
-
-            // 5. Calculate Stats
+            // 4. Calculate Stats (Local only for speed)
             voteStats = {};
-            
-            // Tally global counts (approximate due to limit)
-            if (allVotes) {
-                allVotes.forEach(v => {
-                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    voteStats[v.caption_id].total += parseInt(v.vote_value);
-                });
-            }
-
-            // Apply MY votes accurately
             if (myVotes) {
                 myVotes.forEach(v => {
                     if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
@@ -145,7 +128,7 @@
                 });
             }
 
-            // 6. Render
+            // 5. Render
             allMemes = captions.map(item => ({
                 ...item,
                 imageUrl: imageMap[item.image_id] || null
@@ -153,7 +136,7 @@
 
             renderGrid(allMemes, container);
             setupSearch(allMemes, container);
-            logMsg("Ready!", "#0f0");
+            logMsg("Step 0.9: Render Complete (Ready to Click)");
         }
 
         function renderGrid(memes, container) {
@@ -191,7 +174,7 @@
                                     <i class="fa-solid fa-arrow-up"></i>
                                 </button>
                                 
-                                <span class="vote-count" id="count-${item.id}">${stats.total}</span>
+                                <span class="vote-count" id="count-${item.id}">${item.votes || 0}</span>
                                 
                                 <button class="vote-btn ${downActive} down-btn" onclick="handleVote('${item.id}', -1)">
                                     <i class="fa-solid fa-arrow-down"></i>
@@ -215,79 +198,91 @@
             });
         }
 
-        // --- INTERACTIVE VOTE HANDLER ---
+        // --- STEP-BY-STEP TRACE HANDLER ---
         async function handleVote(captionId, newValue) {
-            const client = getClient();
-            logMsg(`Button Clicked for meme ${captionId.substring(0,4)}...`);
+            try {
+                logMsg(`Step 1: Clicked! ID: ${captionId}`, "cyan");
 
-            const { data: { user } } = await client.auth.getUser();
-            if (!user) { alert("Login first!"); return; }
+                const client = getClient();
+                logMsg("Step 2: Client got.");
 
-            // 1. Optimistic UI Update
-            const countSpan = document.getElementById(`count-${captionId}`);
-            let currentTotal = parseInt(countSpan.innerText) || 0;
-            
-            if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
-            const currentVoteValue = voteStats[captionId].myVote;
+                const { data: { user } } = await client.auth.getUser();
+                if (!user) { alert("Login first!"); return; }
+                logMsg("Step 3: User confirmed: " + user.email.substring(0,5) + "...");
 
-            // Calculate new state
-            if (currentVoteValue === newValue) {
-                logMsg("Removing vote (Toggle OFF)");
-                updateUIColors(captionId, 0);
-                countSpan.innerText = currentTotal - newValue;
-                voteStats[captionId].myVote = 0;
-            } else if (currentVoteValue === 0) {
-                logMsg("Adding new vote");
-                updateUIColors(captionId, newValue);
-                countSpan.innerText = currentTotal + newValue;
-                voteStats[captionId].myVote = newValue;
-            } else {
-                logMsg("Swapping vote");
-                updateUIColors(captionId, newValue);
-                countSpan.innerText = currentTotal + (newValue * 2);
-                voteStats[captionId].myVote = newValue;
-            }
+                // Get UI Element
+                const countSpan = document.getElementById(`count-${captionId}`);
+                if (!countSpan) { throw new Error("Could not find count-span ID"); }
+                logMsg("Step 4: Found UI Element.");
 
-            // 2. Database Sync
-            logMsg("Checking DB for existing vote...");
-            const { data: existingVotes, error: checkError } = await client
-                .from('caption_votes')
-                .select('*')
-                .eq('profile_id', user.id)
-                .eq('caption_id', captionId);
+                let currentTotal = parseInt(countSpan.innerText) || 0;
+                
+                // Init Stats if missing
+                if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
+                const currentVoteValue = voteStats[captionId].myVote;
+                logMsg(`Step 5: Current Vote is ${currentVoteValue}. New is ${newValue}`);
 
-            if (checkError) {
-                logMsg("Check Error: " + checkError.message, "red");
-                alert("DB Error: " + checkError.message);
-                return;
-            }
-
-            const existingVote = existingVotes && existingVotes.length > 0 ? existingVotes[0] : null;
-
-            if (existingVote) {
-                if (existingVote.vote_value === newValue) {
-                    const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
-                    if (error) logMsg("Delete Error: " + error.message, "red");
-                    else logMsg("DB Delete Success", "#0f0");
-                } else {
-                    const { error } = await client.from('caption_votes').update({ vote_value: newValue }).eq('id', existingVote.id);
-                    if (error) logMsg("Update Error: " + error.message, "red");
-                    else logMsg("DB Update Success", "#0f0");
-                }
-            } else {
-                const { error } = await client.from('caption_votes').insert({
-                    profile_id: user.id,
-                    caption_id: captionId,
-                    vote_value: newValue
-                });
-                if (error) {
-                    logMsg("Insert Error: " + error.message, "red");
-                    alert("Insert Error: " + error.message);
-                    // Revert UI
+                // Calculate Logic
+                let actionType = "";
+                if (currentVoteValue === newValue) {
+                    actionType = "DELETE";
                     updateUIColors(captionId, 0);
+                    countSpan.innerText = currentTotal - newValue;
+                    voteStats[captionId].myVote = 0;
+                } else if (currentVoteValue === 0) {
+                    actionType = "INSERT";
+                    updateUIColors(captionId, newValue);
+                    countSpan.innerText = currentTotal + newValue;
+                    voteStats[captionId].myVote = newValue;
                 } else {
-                    logMsg("DB Insert Success", "#0f0");
+                    actionType = "UPDATE";
+                    updateUIColors(captionId, newValue);
+                    countSpan.innerText = currentTotal + (newValue * 2);
+                    voteStats[captionId].myVote = newValue;
                 }
+                logMsg(`Step 6: Logic done. Action is: ${actionType}`);
+
+                // DB Interaction
+                logMsg("Step 7: Checking DB for existing row...");
+                
+                const { data: existingVotes, error: checkError } = await client
+                    .from('caption_votes')
+                    .select('*')
+                    .eq('profile_id', user.id)
+                    .eq('caption_id', captionId);
+
+                if (checkError) throw new Error("Check Error: " + checkError.message);
+                
+                logMsg("Step 8: DB Check complete.");
+                const existingVote = existingVotes && existingVotes.length > 0 ? existingVotes[0] : null;
+
+                if (existingVote) {
+                    logMsg("Step 9: Row found. Updating/Deleting...");
+                    if (existingVote.vote_value === newValue) {
+                        const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
+                        if (error) throw new Error(error.message);
+                        logMsg("Step 10: DELETE SUCCESS!", "#0f0");
+                    } else {
+                        const { error } = await client.from('caption_votes').update({ vote_value: newValue }).eq('id', existingVote.id);
+                        if (error) throw new Error(error.message);
+                        logMsg("Step 10: UPDATE SUCCESS!", "#0f0");
+                    }
+                } else {
+                    logMsg("Step 9: No row. Inserting...");
+                    const { error } = await client.from('caption_votes').insert({
+                        profile_id: user.id,
+                        caption_id: captionId,
+                        vote_value: newValue
+                    });
+                    if (error) throw new Error(error.message);
+                    logMsg("Step 10: INSERT SUCCESS!", "#0f0");
+                }
+
+            } catch (err) {
+                logMsg("❌ CRASHED: " + err.message, "red");
+                alert("CRASH: " + err.message);
+                console.error(err);
+                // Revert UI if needed (simple reload works best for users)
             }
         }
 
