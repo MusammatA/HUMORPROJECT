@@ -71,6 +71,8 @@
             height: auto;
             border-bottom: 3px solid var(--text-main);
             display: block;
+            min-height: 200px;
+            background: #eee;
         }
 
         .card-content {
@@ -133,19 +135,15 @@
             })
         }
         
-        // --- UPDATED DOUBLE-CHECK LOGIC ---
         async function renderApp() {
             const container = document.getElementById('content-view')
             const client = getClient();
 
-            // 1. Check for session immediately (fixes the "Loading" hang on refresh)
-            const { data: { session }, error: sessionError } = await client.auth.getSession();
+            const { data: { session } } = await client.auth.getSession();
             
             if (session) {
-                console.log("Session found immediately!");
                 await showMemes(client, container);
             } else {
-                console.log("No initial session; showing login box.");
                 container.innerHTML = `
                     <div class="auth-box">
                         <h2>Login to see the memes 🔒</h2>
@@ -155,9 +153,7 @@
                     </div>`;
             }
 
-            // 2. Also listen for changes (handles the initial login redirect)
             client.auth.onAuthStateChange(async (event, currentSession) => {
-                console.log("Auth state changed:", event);
                 if (currentSession) {
                     await showMemes(client, container);
                 }
@@ -165,22 +161,17 @@
         }
 
         async function showMemes(client, container) {
-            console.log("Attempting to fetch memes...");
-            
             const { data, error } = await client.from('images').select('*')
             
             if (error) {
-                console.error("Database Error:", error);
                 container.innerHTML = `<p style="color: red; text-align: center;">Error: ${error.message}</p>`;
                 return
             }
 
             if (!data || data.length === 0) {
-                console.log("Database returned 0 results.");
                 container.innerHTML = `
                     <div style="text-align: center;">
                         <p>The vibes are empty! (0 memes found)</p>
-                        <p style="font-size: 0.9rem;">This is likely an RLS permission issue.</p>
                         <button class="vote-btn" onclick="getClient().auth.signOut().then(() => location.reload())">Logout</button>
                     </div>`;
                 return;
@@ -193,10 +184,15 @@
                 <ul>`
             
             data.forEach(item => {
-                const imageUrl = `https://fshvifvunmcbpbeidvbw.supabase.co/storage/v1/object/public/meme_images/${item.id}.jpg`;
+                // Using getPublicUrl to ensure we have the correct path to Michael's storage bucket
+                const { data: { publicUrl } } = client
+                    .storage
+                    .from('meme_images')
+                    .getPublicUrl(`${item.id}.jpg`);
+
                 html += `
                     <li>
-                        <img src="${imageUrl}" class="meme-image" alt="Meme">
+                        <img src="${publicUrl}" class="meme-image" alt="Meme" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'">
                         <div class="card-content">✨ Meme ID: ${item.id.substring(0,8)}</div>
                     </li>`
             })
