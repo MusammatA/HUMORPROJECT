@@ -109,13 +109,57 @@ li:hover {
     flex-grow: 1;
 }
 
+/* --- NEW VOTING STYLES --- */
 .actions {
     padding: 15px 20px;
     background: #fafafa;
     border-top: 2px solid #eee;
     display: flex;
-    justify-content: space-between;
+    justify-content: space-between; /* Spreads elements out */
     align-items: center;
+}
+
+.vote-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border: 2px solid var(--text-main);
+    border-radius: 50px;
+    padding: 5px 10px;
+    box-shadow: 2px 2px 0px rgba(0,0,0,0.1);
+}
+
+.vote-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 5px;
+    transition: transform 0.1s;
+    opacity: 0.5; /* Fade out inactive buttons */
+}
+
+.vote-btn:hover {
+    transform: scale(1.2);
+    opacity: 1;
+}
+
+/* Active states (Visual feedback) */
+.vote-btn.active.up { color: #4CAF50; opacity: 1; } /* Green for Up */
+.vote-btn.active.down { color: #F44336; opacity: 1; } /* Red for Down */
+
+.vote-count {
+    font-weight: bold;
+    min-width: 20px;
+    text-align: center;
+}
+
+.comments-toggle {
+    font-size: 0.9rem;
+    color: #888;
+    cursor: pointer;
+    text-decoration: underline;
 }
 
 .like-btn {
