@@ -18,11 +18,6 @@
         <h1>Brain Rot Central</h1>
         <p class="subtitle">Fresh from the Database</p>
 
-        <div style="background:#f0f0f0; padding:10px; border-radius:8px; margin-bottom:20px; font-size:0.8rem; font-family:monospace;">
-            <div><strong>DB Status:</strong> <span id="db-status">Connecting...</span> <span id="db-dot" style="height:10px; width:10px; background:grey; border-radius:50%; display:inline-block;"></span></div>
-            <div id="last-error" style="color:red; margin-top:5px;"></div>
-        </div>
-
         <div class="search-wrapper" style="display: none;">
             <input type="text" id="search-input" placeholder="🔍 Search for vibes, cats, or chaos...">
         </div>
@@ -30,6 +25,11 @@
         <div id="content-view">
             <p style="text-align: center;">Loading the vibes...</p>
         </div>
+    </div>
+
+    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 150px; background: #222; color: #0f0; font-family: monospace; font-size: 12px; overflow-y: scroll; padding: 10px; border-top: 4px solid #444; z-index: 9999; display: none;">
+        <div><strong>Action Log (Click buttons to see events here):</strong></div>
+        <div id="log-content"></div>
     </div>
 
     <script>
@@ -45,6 +45,19 @@
                 supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
             }
             return supabaseClient;
+        }
+        
+        // Helper to print to the black box
+        function logMsg(msg, color = "#0f0") {
+            const box = document.getElementById('click-logger');
+            const content = document.getElementById('log-content');
+            box.style.display = 'block';
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.style.borderBottom = "1px solid #333";
+            line.style.padding = "2px 0";
+            line.innerText = `> ${new Date().toLocaleTimeString()}: ${msg}`;
+            content.prepend(line);
         }
 
         async function signIn() {
@@ -85,10 +98,12 @@
         }
 
         async function fetchAndShowMemes(client, container, user) {
+            logMsg("Fetching Data...");
+
             // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
             if (error) {
-                container.innerHTML = `<p>Error: ${error.message}</p>`;
+                logMsg("Error fetching captions: " + error.message, "red");
                 return;
             }
 
@@ -98,40 +113,39 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch Votes & Calculate
-            const { data: allVotes, error: voteError } = await client.from('caption_votes').select('*');
-            
-            // Debug UI Update
-            const statusText = document.getElementById('db-status');
-            const statusDot = document.getElementById('db-dot');
+            // 3. Fetch MY VOTES Separately (Fixes the 1000 limit bug)
+            logMsg("Fetching YOUR specific votes...", "yellow");
+            const { data: myVotes, error: myVoteError } = await client
+                .from('caption_votes')
+                .select('*')
+                .eq('profile_id', user.id); // Get ONLY my votes
 
-            if (voteError) {
-                statusText.innerText = "Error Fetching Votes";
-                statusDot.style.backgroundColor = "red";
-                document.getElementById('last-error').innerText = voteError.message;
-            } else if (!allVotes || allVotes.length === 0) {
-                statusText.innerText = "0 Votes Found (Empty/RLS)";
-                statusDot.style.backgroundColor = "orange";
-            } else {
-                statusText.innerText = `Loaded ${allVotes.length} Votes`;
-                statusDot.style.backgroundColor = "#4CAF50";
-            }
+            if (myVoteError) logMsg("Error fetching my votes: " + myVoteError.message, "red");
+            else logMsg(`Found ${myVotes.length} votes by you.`);
 
+            // 4. Fetch Global Totals (Still hits 1000 limit, but less critical for UI state)
+            const { data: allVotes } = await client.from('caption_votes').select('caption_id, vote_value').limit(1000);
+
+            // 5. Calculate Stats
             voteStats = {};
+            
+            // Tally global counts (approximate due to limit)
             if (allVotes) {
                 allVotes.forEach(v => {
-                    if (!voteStats[v.caption_id]) {
-                        voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    }
-                    const val = parseInt(v.vote_value);
-                    voteStats[v.caption_id].total += val;
-                    if (v.profile_id === user.id) {
-                        voteStats[v.caption_id].myVote = val;
-                    }
+                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
+                    voteStats[v.caption_id].total += parseInt(v.vote_value);
                 });
             }
 
-            // 4. Merge & Render
+            // Apply MY votes accurately
+            if (myVotes) {
+                myVotes.forEach(v => {
+                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
+                    voteStats[v.caption_id].myVote = parseInt(v.vote_value);
+                });
+            }
+
+            // 6. Render
             allMemes = captions.map(item => ({
                 ...item,
                 imageUrl: imageMap[item.image_id] || null
@@ -139,6 +153,7 @@
 
             renderGrid(allMemes, container);
             setupSearch(allMemes, container);
+            logMsg("Ready!", "#0f0");
         }
 
         function renderGrid(memes, container) {
@@ -172,13 +187,13 @@
 
                         <div class="actions">
                             <div class="vote-controls">
-                                <button class="vote-btn ${upActive} up-btn" onclick="handleVoteSafe('${item.id}', 1)">
+                                <button class="vote-btn ${upActive} up-btn" onclick="handleVote('${item.id}', 1)">
                                     <i class="fa-solid fa-arrow-up"></i>
                                 </button>
                                 
                                 <span class="vote-count" id="count-${item.id}">${stats.total}</span>
                                 
-                                <button class="vote-btn ${downActive} down-btn" onclick="handleVoteSafe('${item.id}', -1)">
+                                <button class="vote-btn ${downActive} down-btn" onclick="handleVote('${item.id}', -1)">
                                     <i class="fa-solid fa-arrow-down"></i>
                                 </button>
                             </div>
@@ -200,65 +215,64 @@
             });
         }
 
-        // --- SAFETY-WRAPPED VOTING ---
-        async function handleVoteSafe(captionId, newValue) {
-            try {
-                await handleVoteLogic(captionId, newValue);
-            } catch (err) {
-                console.error(err);
-                alert("Vote Error: " + err.message);
-                document.getElementById('last-error').innerText = "Last Error: " + err.message;
-            }
-        }
-
-        async function handleVoteLogic(captionId, newValue) {
+        // --- INTERACTIVE VOTE HANDLER ---
+        async function handleVote(captionId, newValue) {
             const client = getClient();
+            logMsg(`Button Clicked for meme ${captionId.substring(0,4)}...`);
+
             const { data: { user } } = await client.auth.getUser();
             if (!user) { alert("Login first!"); return; }
 
             // 1. Optimistic UI Update
             const countSpan = document.getElementById(`count-${captionId}`);
-            if (!countSpan) throw new Error("Could not find count element");
-            
             let currentTotal = parseInt(countSpan.innerText) || 0;
             
-            // Ensure stats exist locally
             if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
             const currentVoteValue = voteStats[captionId].myVote;
 
-            // Calculate new UI state
+            // Calculate new state
             if (currentVoteValue === newValue) {
+                logMsg("Removing vote (Toggle OFF)");
                 updateUIColors(captionId, 0);
                 countSpan.innerText = currentTotal - newValue;
                 voteStats[captionId].myVote = 0;
             } else if (currentVoteValue === 0) {
+                logMsg("Adding new vote");
                 updateUIColors(captionId, newValue);
                 countSpan.innerText = currentTotal + newValue;
                 voteStats[captionId].myVote = newValue;
             } else {
+                logMsg("Swapping vote");
                 updateUIColors(captionId, newValue);
                 countSpan.innerText = currentTotal + (newValue * 2);
                 voteStats[captionId].myVote = newValue;
             }
 
             // 2. Database Sync
-            const { data: existingVotes, error: fetchErr } = await client
+            logMsg("Checking DB for existing vote...");
+            const { data: existingVotes, error: checkError } = await client
                 .from('caption_votes')
                 .select('*')
                 .eq('profile_id', user.id)
                 .eq('caption_id', captionId);
 
-            if (fetchErr) throw new Error("DB Fetch failed: " + fetchErr.message);
+            if (checkError) {
+                logMsg("Check Error: " + checkError.message, "red");
+                alert("DB Error: " + checkError.message);
+                return;
+            }
 
             const existingVote = existingVotes && existingVotes.length > 0 ? existingVotes[0] : null;
 
             if (existingVote) {
                 if (existingVote.vote_value === newValue) {
                     const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
-                    if (error) throw new Error("Delete failed: " + error.message);
+                    if (error) logMsg("Delete Error: " + error.message, "red");
+                    else logMsg("DB Delete Success", "#0f0");
                 } else {
                     const { error } = await client.from('caption_votes').update({ vote_value: newValue }).eq('id', existingVote.id);
-                    if (error) throw new Error("Update failed: " + error.message);
+                    if (error) logMsg("Update Error: " + error.message, "red");
+                    else logMsg("DB Update Success", "#0f0");
                 }
             } else {
                 const { error } = await client.from('caption_votes').insert({
@@ -267,11 +281,12 @@
                     vote_value: newValue
                 });
                 if (error) {
-                    // Revert UI on insert failure
+                    logMsg("Insert Error: " + error.message, "red");
+                    alert("Insert Error: " + error.message);
+                    // Revert UI
                     updateUIColors(captionId, 0);
-                    countSpan.innerText = currentTotal; // Reset number
-                    voteStats[captionId].myVote = 0; 
-                    throw new Error("Insert failed: " + error.message);
+                } else {
+                    logMsg("DB Insert Success", "#0f0");
                 }
             }
         }
