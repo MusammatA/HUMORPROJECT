@@ -71,8 +71,8 @@
             height: auto;
             border-bottom: 3px solid var(--text-main);
             display: block;
-            min-height: 200px;
-            background: #eee;
+            min-height: 100px;
+            background: #f9f9f9;
         }
 
         .card-content {
@@ -139,6 +139,7 @@
             const container = document.getElementById('content-view')
             const client = getClient();
 
+            // Check session immediately
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
@@ -153,6 +154,7 @@
                     </div>`;
             }
 
+            // Listen for changes
             client.auth.onAuthStateChange(async (event, currentSession) => {
                 if (currentSession) {
                     await showMemes(client, container);
@@ -184,7 +186,7 @@
                 <ul>`
             
             data.forEach(item => {
-                // Using getPublicUrl to ensure we have the correct path to Michael's storage bucket
+                // Generates the public URL for the images
                 const { data: { publicUrl } } = client
                     .storage
                     .from('meme_images')
@@ -192,8 +194,12 @@
 
                 html += `
                     <li>
-                        <img src="${publicUrl}" class="meme-image" alt="Meme" onerror="this.src='https://via.placeholder.com/400x300?text=Image+Not+Found'">
-                        <div class="card-content">✨ Meme ID: ${item.id.substring(0,8)}</div>
+                        <img src="${publicUrl}" class="meme-image" alt="Meme" onerror="this.style.display='none'">
+                        <div class="card-content">
+                            ✨ ${item.caption || "Top Tier Meme"}
+                            <br>
+                            <small style="font-size: 0.7rem; color: #888;">ID: ${item.id.substring(0,8)}</small>
+                        </div>
                     </li>`
             })
             container.innerHTML = html + `</ul>`
