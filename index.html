@@ -34,7 +34,7 @@
         
         let supabaseClient;
         let allMemes = []; 
-        let userVotes = {}; // Tracks current user's votes: { caption_id: 1 (or -1) }
+        let userVotes = {}; // { caption_id: 1 (up) or -1 (down) }
 
         function getClient() {
             if (!supabaseClient) {
@@ -55,15 +55,15 @@
             const container = document.getElementById('content-view');
             const searchBar = document.querySelector('.search-wrapper');
             const client = getClient();
+            
+            // Check session immediately
             const { data: { session } } = await client.auth.getSession();
             
             if (session) {
-                // FIX: Show search bar ONLY if logged in
-                searchBar.style.display = 'block';
+                searchBar.style.display = 'block'; // Show search on login
                 await fetchAndShowMemes(client, container, session.user);
             } else {
-                // Hide search bar if not logged in
-                searchBar.style.display = 'none';
+                searchBar.style.display = 'none'; // Hide search on logout
                 container.innerHTML = `
                     <div class="auth-box">
                         <h2>Login to see the memes 🔒</h2>
@@ -86,6 +86,7 @@
             const { data: captions, error } = await client.from('captions').select('*');
             if (error || !captions) {
                 container.innerHTML = `<p>Error loading vibes.</p>`;
+                console.error("Caption Error:", error);
                 return;
             }
 
@@ -95,12 +96,14 @@
             const imageMap = {};
             if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            // 3. Fetch User's Existing Votes
-            const { data: votes } = await client
+            // 3. Fetch User's Existing Votes (CRITICAL FOR RELOAD)
+            const { data: votes, error: voteError } = await client
                 .from('caption_votes')
                 .select('*')
                 .eq('user_id', user.id);
             
+            if (voteError) console.error("Error fetching votes:", voteError);
+
             userVotes = {};
             if (votes) votes.forEach(v => userVotes[v.caption_id] = v.value);
 
@@ -112,7 +115,13 @@
 
             renderGrid(allMemes, container);
 
-            document.getElementById('search-input').addEventListener('input', (e) => {
+            // Search Listener
+            const searchInput = document.getElementById('search-input');
+            // Remove old listeners by cloning (simple hack) or just adding new one safely
+            const newSearch = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newSearch, searchInput);
+            
+            newSearch.addEventListener('input', (e) => {
                 const searchTerm = e.target.value.toLowerCase();
                 const filtered = allMemes.filter(meme => 
                     meme.content && meme.content.toLowerCase().includes(searchTerm)
@@ -137,7 +146,7 @@
                 const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
                 const displayUrl = item.imageUrl || fallbackGif;
 
-                // Check existing vote
+                // Determine active class based on server data
                 const myVote = userVotes[item.id] || 0; 
                 const upActive = myVote === 1 ? 'active up' : '';
                 const downActive = myVote === -1 ? 'active down' : '';
@@ -170,72 +179,81 @@
             container.innerHTML = html + `</ul>`;
         }
 
-        // --- FIXED VOTE LOGIC: TOGGLE & RESET ---
+        // --- FIXED "CRASH-PROOF" VOTE LOGIC ---
         async function handleVote(captionId, newValue) {
             const client = getClient();
             const { data: { user } } = await client.auth.getUser();
             if (!user) { alert("Login to vote!"); return; }
 
-            // 1. Get current state from our local variable (faster than DB query)
-            const currentVoteValue = userVotes[captionId] || 0;
+            // 1. Optimistic UI update (Fast)
             const countSpan = document.getElementById(`count-${captionId}`);
             let currentTotal = parseInt(countSpan.innerText) || 0;
+            const currentVoteValue = userVotes[captionId] || 0; // Get local state
 
-            // 2. Optimistic UI Update (Update screen BEFORE database finishes)
             if (currentVoteValue === newValue) {
-                // RESET CASE: User clicked the same button again. Remove vote.
-                // If I upvoted (+1) and click up again, remove it (-1 from total)
+                // RESET: Remove vote
                 updateUIColors(captionId, 0);
-                countSpan.innerText = currentTotal - newValue; 
-                userVotes[captionId] = 0; // Reset local state
-
-                // DB: Delete the row
-                await client.from('caption_votes').delete()
-                    .eq('user_id', user.id)
-                    .eq('caption_id', captionId);
-            
+                countSpan.innerText = currentTotal - newValue;
+                userVotes[captionId] = 0;
             } else if (currentVoteValue === 0) {
-                // NEW VOTE CASE: No previous vote. Add it.
+                // NEW: Add vote
                 updateUIColors(captionId, newValue);
                 countSpan.innerText = currentTotal + newValue;
                 userVotes[captionId] = newValue;
+            } else {
+                // FLIP: Change vote (-1 to 1 or vice versa)
+                updateUIColors(captionId, newValue);
+                countSpan.innerText = currentTotal + (newValue * 2);
+                userVotes[captionId] = newValue;
+            }
 
-                // DB: Insert new row
-                await client.from('caption_votes').insert({
+            // 2. Database Sync (The important part)
+            // Use select().eq().eq() which returns an ARRAY, not an error if empty
+            const { data: existingVotes, error: checkError } = await client
+                .from('caption_votes')
+                .select('*')
+                .eq('user_id', user.id)
+                .eq('caption_id', captionId);
+
+            if (checkError) {
+                console.error("Database Check Failed:", checkError);
+                return;
+            }
+
+            const existingVote = existingVotes.length > 0 ? existingVotes[0] : null;
+
+            if (existingVote) {
+                if (existingVote.value === newValue) {
+                    // DELETE (Toggle off)
+                    const { error } = await client.from('caption_votes').delete().eq('id', existingVote.id);
+                    if (error) console.error("Delete Failed:", error);
+                    else console.log("Vote removed from DB");
+                } else {
+                    // UPDATE (Flip)
+                    const { error } = await client.from('caption_votes').update({ value: newValue }).eq('id', existingVote.id);
+                    if (error) console.error("Update Failed:", error);
+                    else console.log("Vote updated in DB");
+                }
+            } else {
+                // INSERT (New)
+                const { error } = await client.from('caption_votes').insert({
                     user_id: user.id,
                     caption_id: captionId,
                     value: newValue
                 });
-
-            } else {
-                // SWAP CASE: User switched from Up to Down (or vice versa).
-                // If I was Up (+1) and go Down (-1), total changes by -2.
-                updateUIColors(captionId, newValue);
-                countSpan.innerText = currentTotal + (newValue * 2); 
-                userVotes[captionId] = newValue;
-
-                // DB: Update existing row
-                // We need to find the specific vote ID first or use match logic
-                const { data: existing } = await client.from('caption_votes')
-                    .select('id').eq('user_id', user.id).eq('caption_id', captionId).single();
-                
-                if (existing) {
-                    await client.from('caption_votes').update({ value: newValue }).eq('id', existing.id);
-                }
+                if (error) console.error("Insert Failed:", error);
+                else console.log("Vote inserted into DB");
             }
         }
 
-        // Helper to toggle CSS classes
         function updateUIColors(captionId, value) {
             const card = document.getElementById(`card-${captionId}`);
             const upBtn = card.querySelector('.up-btn');
             const downBtn = card.querySelector('.down-btn');
 
-            // Reset
             upBtn.classList.remove('active', 'up');
             downBtn.classList.remove('active', 'down');
 
-            // Set Active
             if (value === 1) upBtn.classList.add('active', 'up');
             if (value === -1) downBtn.classList.add('active', 'down');
         }
