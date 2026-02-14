@@ -1,5 +1,3 @@
-/* styles.css */
-
 :root {
     --bg-color: #FFF8F0;
     --card-bg: #FFFFFF;
@@ -45,6 +43,83 @@ p.subtitle {
     box-shadow: 4px 4px 0px var(--text-main);
 }
 
+/* --- NEW LOGIN BOX DESIGN --- */
+.auth-box {
+    background: #fff;
+    border: 4px solid var(--text-main);
+    border-radius: 24px;
+    padding: 60px 40px;
+    text-align: center;
+    box-shadow: 12px 12px 0px var(--accent-pink);
+    max-width: 450px;
+    margin: 60px auto;
+    transition: transform 0.3s;
+}
+
+.auth-box:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 16px 16px 0px var(--accent-pink);
+}
+
+.auth-box h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: var(--text-main);
+}
+
+.auth-subtext {
+    font-size: 1.1rem;
+    color: #666;
+    margin-bottom: 40px;
+}
+
+/* --- NEW GLOWING BUTTONS --- */
+.login-btn {
+    background: var(--text-main);
+    color: #fff;
+    font-family: 'Quicksand', sans-serif;
+    font-weight: 700;
+    font-size: 1.2rem;
+    padding: 18px 40px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0px 0px 0px rgba(0,0,0,0);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.login-btn:hover {
+    background: #000;
+    transform: scale(1.05);
+    box-shadow: 0px 0px 20px var(--accent-green); /* The Glow Effect */
+}
+
+.logout-btn {
+    background: #fff;
+    border: 2px solid var(--text-main);
+    font-family: 'Quicksand', sans-serif;
+    font-weight: 700;
+    padding: 10px 25px;
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 4px 4px 0px var(--text-main);
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.logout-btn:hover {
+    background: var(--accent-pink);
+    color: #fff;
+    border-color: var(--text-main);
+    transform: translate(-2px, -2px);
+    box-shadow: 6px 6px 0px var(--text-main);
+}
+
+/* --- SEARCH BAR --- */
 .search-wrapper {
     text-align: center;
     margin-bottom: 40px;
@@ -68,6 +143,7 @@ p.subtitle {
     transform: translateY(-2px);
 }
 
+/* --- GRID & CARDS --- */
 ul { 
     list-style: none; 
     padding: 0; 
@@ -109,13 +185,13 @@ li:hover {
     flex-grow: 1;
 }
 
-/* --- NEW VOTING STYLES --- */
+/* --- VOTE CONTROLS --- */
 .actions {
     padding: 15px 20px;
     background: #fafafa;
     border-top: 2px solid #eee;
     display: flex;
-    justify-content: space-between; /* Spreads elements out */
+    justify-content: space-between;
     align-items: center;
 }
 
@@ -137,7 +213,7 @@ li:hover {
     font-size: 1.2rem;
     padding: 5px;
     transition: transform 0.1s;
-    opacity: 0.5; /* Fade out inactive buttons */
+    opacity: 0.5;
 }
 
 .vote-btn:hover {
@@ -145,79 +221,11 @@ li:hover {
     opacity: 1;
 }
 
-/* Active states (Visual feedback) */
-.vote-btn.active.up { color: #4CAF50; opacity: 1; } /* Green for Up */
-.vote-btn.active.down { color: #F44336; opacity: 1; } /* Red for Down */
+.vote-btn.active.up { color: #4CAF50; opacity: 1; }
+.vote-btn.active.down { color: #F44336; opacity: 1; }
 
 .vote-count {
     font-weight: bold;
     min-width: 20px;
     text-align: center;
-}
-
-.comments-toggle {
-    font-size: 0.9rem;
-    color: #888;
-    cursor: pointer;
-    text-decoration: underline;
-}
-
-.like-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1.2rem;
-    color: #ccc;
-    transition: color 0.2s;
-}
-
-.like-btn.liked { color: #ff4d4d; }
-.like-btn:hover { transform: scale(1.2); }
-
-.comments-section {
-    padding: 15px 20px;
-    background: #fff;
-    border-top: 1px solid #eee;
-}
-
-.comment-list {
-    font-size: 0.85rem;
-    color: #666;
-    margin-bottom: 10px;
-    max-height: 80px;
-    overflow-y: auto;
-}
-
-.comment-input-group {
-    display: flex;
-    gap: 5px;
-}
-
-.comment-input {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-family: inherit;
-}
-
-.post-btn {
-    background: var(--text-main);
-    color: white;
-    border: none;
-    padding: 5px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-.auth-box {
-    background: white;
-    border: 3px solid var(--text-main);
-    border-radius: 16px;
-    padding: 40px;
-    text-align: center;
-    box-shadow: 6px 6px 0px var(--text-main);
-    margin: 0 auto;
-    max-width: 400px;
 }
