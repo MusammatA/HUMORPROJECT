@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brain Rot Central - MATH DEBUG</title>
+    <title>Brain Rot Central</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css"> 
 </head>
 <body>
@@ -27,8 +27,7 @@
         </div>
     </div>
 
-    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 200px; background: #222; color: #0f0; font-family: monospace; font-size: 11px; overflow-y: scroll; padding: 10px; border-top: 4px solid #444; z-index: 9999; display: none;">
-        <div><strong>Math Debug Log:</strong></div>
+    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: #222; color: #f0f0f0; font-family: monospace; font-size: 11px; overflow-y: scroll; padding: 10px; border-top: 2px solid #444; z-index: 9999; display: none;">
         <div id="log-content"></div>
     </div>
 
@@ -48,13 +47,13 @@
             return supabaseClient;
         }
         
-        function logMsg(msg, color = "#0f0") {
+        // Simple error logger (hidden unless error)
+        function logMsg(msg, color = "#fff") {
             const box = document.getElementById('click-logger');
             const content = document.getElementById('log-content');
-            box.style.display = 'block';
+            if (color === "red") box.style.display = 'block'; // Only show box on error
             const line = document.createElement('div');
             line.style.color = color;
-            line.style.borderBottom = "1px solid #333";
             line.innerText = `> ${msg}`;
             content.prepend(line);
         }
@@ -80,11 +79,13 @@
                 await fetchAndShowMemes(client, container);
             } else {
                 searchBar.style.display = 'none'; 
+                // NEW LOGIN UI: No Emoji, Clean Button
                 container.innerHTML = `
                     <div class="auth-box">
-                        <h2>Login to see the memes 🔒</h2>
-                        <button onclick="signIn()" style="margin-top:20px; padding:10px 20px; cursor:pointer;">
-                            Login with Google
+                        <h2>Login to see the memes</h2>
+                        <p class="auth-subtext">You need to be cool (and logged in) to vote.</p>
+                        <button class="login-btn" onclick="signIn()">
+                            <i class="fa-brands fa-google"></i> Login with Google
                         </button>
                     </div>`;
             }
@@ -99,13 +100,9 @@
         }
 
         async function fetchAndShowMemes(client, container) {
-            logMsg(`User: ${CURRENT_USER_ID.substring(0,5)}...`);
-            logMsg("1. Loading Captions...");
-
             // 1. Fetch Captions
             const { data: captions, error } = await client.from('captions').select('*');
             if (error) { logMsg("Error captions: " + error.message, "red"); return; }
-            logMsg(`Loaded ${captions.length} captions.`);
 
             // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
@@ -116,13 +113,6 @@
             // 3. Load Local Votes
             const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
             const localKeys = Object.keys(localVotes);
-            logMsg(`2. Browser Memory: Found ${localKeys.length} votes.`);
-            
-            // DEBUG: Print Local Keys
-            if (localKeys.length > 0) {
-                logMsg(`Sample Key: ${localKeys[0]}`, "cyan");
-                logMsg(`Sample Value: ${localVotes[localKeys[0]]}`, "cyan");
-            }
 
             // 4. Fetch Global Totals
             const { data: allVotes } = await client.from('caption_votes').select('*').limit(2000);
@@ -134,33 +124,19 @@
             if (allVotes) {
                 allVotes.forEach(v => {
                     if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
-                    
-                    // Only add if it's NOT me
                     if (v.profile_id !== CURRENT_USER_ID) {
                         voteStats[v.caption_id].total += parseInt(v.vote_value);
                     }
                 });
             }
 
-            // B. Add My Local Votes (FORCE NUMBER)
-            let appliedCount = 0;
+            // B. Add My Local Votes
             localKeys.forEach(captionId => {
                 if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
-                
-                const myVal = Number(localVotes[captionId]); // Force Number
-                
-                const oldTotal = voteStats[captionId].total;
+                const myVal = Number(localVotes[captionId]);
                 voteStats[captionId].myVote = myVal;
                 voteStats[captionId].total += myVal;
-                
-                if (appliedCount < 3) {
-                     logMsg(`MATH SUCCESS for ID ${captionId.substring(0,4)}: ${oldTotal} + ${myVal} = ${voteStats[captionId].total}`, "#0f0");
-                }
-                appliedCount++;
             });
-
-            if (appliedCount === 0) logMsg("⚠️ No local votes applied to Math.", "orange");
-            else logMsg(`✅ Applied local math to ${appliedCount} cards.`);
 
             // 6. Render
             allMemes = captions.map(item => ({
@@ -180,7 +156,9 @@
 
             let html = `
                 <div style="text-align: right; margin-bottom: 20px;">
-                    <button onclick="getClient().auth.signOut().then(() => location.reload())" style="cursor:pointer; padding:5px 10px;">Logout</button>
+                    <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                    </button>
                 </div>
                 <ul>`;
             
@@ -189,8 +167,6 @@
                 const displayUrl = item.imageUrl || fallbackGif;
                 
                 const stats = voteStats[item.id] || { total: 0, myVote: 0 };
-                
-                // FORCE CLASSES based on voteStats
                 const upActive = stats.myVote === 1 ? 'active up' : '';
                 const downActive = stats.myVote === -1 ? 'active down' : '';
 
@@ -269,10 +245,8 @@
                 else localVotes[captionId] = nextVoteValue;
                 localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
                 voteStats[captionId].myVote = nextVoteValue;
-                
-                logMsg(`Saved to memory: ${nextVoteValue} for ${captionId.substring(0,4)}`);
 
-                // Update DB (Blind Upsert)
+                // Update DB
                 const { error: upsertError } = await client.from('caption_votes').upsert({
                     profile_id: CURRENT_USER_ID,
                     caption_id: captionId,
@@ -291,7 +265,7 @@
                 }
 
             } catch (err) {
-                logMsg("Error: " + err.message, "red");
+                console.error(err);
             }
         }
 
