@@ -7,166 +7,174 @@
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css"> 
 </head>
 <body>
 
-<div class="container">
-    <div class="search-wrapper">
-        <input type="text" id="search-input" placeholder="🔍 Search the rot...">
+    <div class="container">
+        <h1>Brain Rot Central</h1>
+        
+        <div class="search-wrapper" style="display: none;">
+            <input type="text" id="search-input" placeholder="🔍 Search the rot...">
+        </div>
+
+        <div id="content-view">
+            <p style="text-align: center; padding-top: 50px;">Loading the rot...</p>
+        </div>
+
+        <div class="controls" id="mobile-controls" style="display:none;">
+            <button class="control-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-rotate-left"></i></button>
+            <button class="control-btn down-btn" onclick="swipeLeft()"><i class="fa-solid fa-xmark"></i></button>
+            <button class="control-btn up-btn" onclick="swipeRight()"><i class="fa-solid fa-heart"></i></button>
+        </div>
     </div>
 
-    <div id="content-view">
-        <p style="text-align:center; padding-top:100px;">Loading the rot...</p>
-    </div>
-
-    <div class="controls">
-        <button class="control-btn undo-btn" onclick="undoLastAction()" title="Undo Last Swipe">
-            <i class="fa-solid fa-rotate-left"></i>
-        </button>
-        <button class="control-btn down-btn" onclick="swipeLeft()" title="Downvote">
-            <i class="fa-solid fa-xmark"></i>
-        </button>
-        <button class="control-btn up-btn" onclick="swipeRight()" title="Upvote">
-            <i class="fa-solid fa-heart"></i>
-        </button>
-    </div>
-</div>
-
-<script>
-    const SUPABASE_URL = 'https://secure.almostcrackd.ai';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-    let memes = [];
-    let actionHistory = []; // Tracks swipes for Undo
-    let currentMemeIndex = 0;
-    let CURRENT_USER_ID = null;
-
-    async function init() {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-            window.location.href = "/"; // Redirect if not logged in
-            return;
-        }
-        CURRENT_USER_ID = session.user.id;
-
-        // Fetch Captions & Images
-        const { data: captions } = await supabase.from('captions').select('*');
-        const imageIds = captions.map(c => c.image_id);
-        const { data: images } = await supabase.from('images').select('id, url').in('id', imageIds);
+    <script>
+        const SUPABASE_URL = 'https://secure.almostcrackd.ai'
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
         
-        const imageMap = {};
-        images.forEach(img => imageMap[img.id] = img.url);
-
-        memes = captions.map(c => ({
-            ...c,
-            url: imageMap[c.image_id]
-        }));
-
-        renderCard();
-    }
-
-    function renderCard() {
-        const view = document.getElementById('content-view');
-        view.innerHTML = "";
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
         
-        if (currentMemeIndex >= memes.length) {
-            view.innerHTML = "<div class='card-text' style='text-align:center; margin-top:50px;'>You've reached the end of the rot. 🔚</div>";
-            return;
-        }
+        let allMemes = []; 
+        let actionHistory = []; // For Undo
+        let currentMemeIndex = 0;
+        let CURRENT_USER_ID = null;
 
-        const meme = memes[currentMemeIndex];
-        const localComments = JSON.parse(localStorage.getItem(`comments_${meme.id}`) || '[]');
-
-        const card = document.createElement('div');
-        card.className = 'meme-card';
-        card.innerHTML = `
-            <img src="${meme.url}" class="meme-image" draggable="false">
-            <div class="card-text">${meme.content}</div>
-            <div class="stat-bar">
-                <span><i class="fa-solid fa-arrow-up"></i> ${meme.votes || 0}</span>
-                <span><i class="fa-solid fa-comment"></i> ${localComments.length}</span>
-            </div>
-            <div class="comment-area">
-                ${localComments.map(c => `<div style="margin-bottom:8px; border-bottom:1px solid #eee; padding-bottom:4px;"><strong>匿名:</strong> ${c}</div>`).join('')}
-            </div>
-            <div class="comment-input-box">
-                <input type="text" placeholder="Add anonymous comment..." onkeydown="if(event.key==='Enter') addComment('${meme.id}', this)">
-            </div>
-        `;
-
-        view.appendChild(card);
-        setupSwipe(card);
-    }
-
-    function setupSwipe(element) {
-        const hammer = new Hammer(element);
-        
-        hammer.on('pan', (e) => {
-            element.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX / 20}deg)`;
-        });
-
-        hammer.on('panend', (e) => {
-            if (e.deltaX > 150) {
-                element.style.transform = 'translateX(1000px) rotate(30deg)';
-                swipeRight();
-            } else if (e.deltaX < -150) {
-                element.style.transform = 'translateX(-1000px) rotate(-30deg)';
-                swipeLeft();
+        async function renderApp() {
+            const container = document.getElementById('content-view');
+            const searchBar = document.querySelector('.search-wrapper');
+            const controls = document.getElementById('mobile-controls');
+            
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session) {
+                CURRENT_USER_ID = session.user.id;
+                searchBar.style.display = 'block'; 
+                controls.style.display = 'flex';
+                await fetchMemes();
             } else {
-                element.style.transform = ''; // Spring back
+                searchBar.style.display = 'none'; 
+                controls.style.display = 'none';
+                container.innerHTML = `
+                    <div class="auth-box">
+                        <h2>Login to see the memes</h2>
+                        <button class="login-btn" onclick="signIn()">
+                            <i class="fa-brands fa-google"></i> Login with Google
+                        </button>
+                    </div>`;
             }
-        });
-    }
+        }
 
-    function swipeRight() { handleVote(1); }
-    function swipeLeft() { handleVote(-1); }
+        async function fetchMemes() {
+            const { data: captions } = await supabase.from('captions').select('*');
+            const imageIds = captions.map(c => c.image_id);
+            const { data: images } = await supabase.from('images').select('id, url').in('id', imageIds);
+            const imageMap = {};
+            images.forEach(img => imageMap[img.id] = img.url);
 
-    async function handleVote(val) {
-        const meme = memes[currentMemeIndex];
-        
-        // Save to Undo History
-        actionHistory.push({ index: currentMemeIndex, memeId: meme.id, val: val });
-        
-        // Save to Supabase (Assignment Requirement)
-        await supabase.from('caption_votes').upsert({
-            profile_id: CURRENT_USER_ID,
-            caption_id: meme.id,
-            vote_value: val,
-            created_datetime_utc: new Date().toISOString()
-        });
+            allMemes = captions.map(c => ({ ...c, url: imageMap[c.image_id] }));
+            renderStack();
+        }
 
-        currentMemeIndex++;
-        setTimeout(renderCard, 200); // Wait for swipe animation
-    }
+        function renderStack() {
+            const view = document.getElementById('content-view');
+            view.innerHTML = "";
+            
+            if (currentMemeIndex >= allMemes.length) {
+                view.innerHTML = "<p style='text-align:center;'>You've finished the rot! 🔚</p>";
+                return;
+            }
 
-    async function undoLastAction() {
-        if (actionHistory.length === 0) return;
-        
-        const last = actionHistory.pop();
-        
-        // Optional: Remove vote from DB
-        await supabase.from('caption_votes').delete().eq('caption_id', last.memeId).eq('profile_id', CURRENT_USER_ID);
-        
-        currentMemeIndex = last.index;
-        renderCard();
-    }
+            const meme = allMemes[currentMemeIndex];
+            const localComments = JSON.parse(localStorage.getItem(`comments_${meme.id}`) || '[]');
+            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+            const myVote = localVotes[meme.id] || 0;
 
-    function addComment(memeId, input) {
-        if (!input.value.trim()) return;
-        
-        const comments = JSON.parse(localStorage.getItem(`comments_${memeId}`) || '[]');
-        comments.push(input.value);
-        localStorage.setItem(`comments_${memeId}`, JSON.stringify(comments));
-        
-        input.value = "";
-        renderCard(); // Refresh to show new comment
-    }
+            const card = document.createElement('div');
+            card.className = 'meme-card';
+            card.innerHTML = `
+                <img src="${meme.url}" class="meme-image" draggable="false">
+                <div class="card-text">${meme.content}</div>
+                <div class="stat-bar">
+                    <span><i class="fa-solid fa-arrow-up"></i> ${meme.votes + (myVote)}</span>
+                    <span><i class="fa-solid fa-comment"></i> ${localComments.length}</span>
+                </div>
+                <div class="comment-area">
+                    ${localComments.map(c => `<div style="border-bottom:1px solid #eee; padding:5px;">匿名: ${c}</div>`).join('')}
+                </div>
+                <div class="comment-input-box">
+                    <input type="text" placeholder="Add anonymous comment..." onkeydown="if(event.key==='Enter') addLocalComment('${meme.id}', this)">
+                </div>
+            `;
 
-    init();
-</script>
+            view.appendChild(card);
+            setupSwipe(card);
+        }
+
+        function setupSwipe(element) {
+            const hammer = new Hammer(element);
+            hammer.on('pan', (e) => {
+                element.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX / 20}deg)`;
+            });
+            hammer.on('panend', (e) => {
+                if (e.deltaX > 150) swipeRight();
+                else if (e.deltaX < -150) swipeLeft();
+                else element.style.transform = '';
+            });
+        }
+
+        function swipeRight() { handleVote(1); }
+        function swipeLeft() { handleVote(-1); }
+
+        async function handleVote(val) {
+            const meme = allMemes[currentMemeIndex];
+            actionHistory.push({ index: currentMemeIndex, memeId: meme.id, val: val });
+            
+            // Save Local
+            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+            localVotes[meme.id] = val;
+            localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
+
+            // Save DB
+            await supabase.from('caption_votes').upsert({
+                profile_id: CURRENT_USER_ID,
+                caption_id: meme.id,
+                vote_value: val,
+                created_datetime_utc: new Date().toISOString()
+            });
+
+            currentMemeIndex++;
+            renderStack();
+        }
+
+        function undoLastAction() {
+            if (actionHistory.length === 0) return;
+            const last = actionHistory.pop();
+            currentMemeIndex = last.index;
+            renderStack();
+        }
+
+        function addLocalComment(memeId, input) {
+            if (!input.value.trim()) return;
+            const comments = JSON.parse(localStorage.getItem(`comments_${memeId}`) || '[]');
+            comments.push(input.value);
+            localStorage.setItem(`comments_${memeId}`, JSON.stringify(comments));
+            input.value = "";
+            renderStack();
+        }
+
+        async function signIn() {
+            await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.origin + '/auth/callback' }
+            });
+        }
+
+        renderApp();
+    </script>
 </body>
 </html>
