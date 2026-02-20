@@ -2,11 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Brain Rot Central</title>
     
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
@@ -17,164 +16,273 @@
 
     <div class="container">
         <h1>Brain Rot Central</h1>
-        
+        <p class="subtitle">Fresh from the Database</p>
+
         <div class="search-wrapper" style="display: none;">
-            <input type="text" id="search-input" placeholder="🔍 Search the rot...">
+            <input type="text" id="search-input" placeholder="🔍 Search for vibes, cats, or chaos...">
         </div>
 
         <div id="content-view">
-            <p style="text-align: center; padding-top: 50px;">Loading the rot...</p>
+            <p style="text-align: center;">Loading the vibes...</p>
         </div>
+    </div>
 
-        <div class="controls" id="mobile-controls" style="display:none;">
-            <button class="control-btn undo-btn" onclick="undoLastAction()"><i class="fa-solid fa-rotate-left"></i></button>
-            <button class="control-btn down-btn" onclick="swipeLeft()"><i class="fa-solid fa-xmark"></i></button>
-            <button class="control-btn up-btn" onclick="swipeRight()"><i class="fa-solid fa-heart"></i></button>
-        </div>
+    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: #222; color: #f0f0f0; font-family: monospace; font-size: 11px; overflow-y: scroll; padding: 10px; border-top: 2px solid #444; z-index: 9999; display: none;">
+        <div id="log-content"></div>
     </div>
 
     <script>
         const SUPABASE_URL = 'https://secure.almostcrackd.ai'
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
         
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
-        
+        let supabaseClient;
         let allMemes = []; 
-        let actionHistory = []; // For Undo
-        let currentMemeIndex = 0;
-        let CURRENT_USER_ID = null;
+        let voteStats = {};
+        let CURRENT_USER_ID = null; 
 
+        function getClient() {
+            if (!supabaseClient) {
+                supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+            }
+            return supabaseClient;
+        }
+        
+        // Simple error logger (hidden unless error)
+        function logMsg(msg, color = "#fff") {
+            const box = document.getElementById('click-logger');
+            const content = document.getElementById('log-content');
+            if (color === "red") box.style.display = 'block'; // Only show box on error
+            const line = document.createElement('div');
+            line.style.color = color;
+            line.innerText = `> ${msg}`;
+            content.prepend(line);
+        }
+
+        async function signIn() {
+            const client = getClient();
+            await client.auth.signInWithOAuth({
+                provider: 'google',
+                options: { redirectTo: window.location.origin + '/auth/callback' }
+            })
+        }
+        
         async function renderApp() {
             const container = document.getElementById('content-view');
             const searchBar = document.querySelector('.search-wrapper');
-            const controls = document.getElementById('mobile-controls');
+            const client = getClient();
             
-            const { data: { session } } = await supabase.auth.getSession();
+            const { data: { session } } = await client.auth.getSession();
             
             if (session) {
                 CURRENT_USER_ID = session.user.id;
                 searchBar.style.display = 'block'; 
-                controls.style.display = 'flex';
-                await fetchMemes();
+                await fetchAndShowMemes(client, container);
             } else {
                 searchBar.style.display = 'none'; 
-                controls.style.display = 'none';
+                // NEW LOGIN UI: No Emoji, Clean Button
                 container.innerHTML = `
                     <div class="auth-box">
                         <h2>Login to see the memes</h2>
+                        <p class="auth-subtext">You need to be cool (and logged in) to vote.</p>
                         <button class="login-btn" onclick="signIn()">
                             <i class="fa-brands fa-google"></i> Login with Google
                         </button>
                     </div>`;
             }
+
+            client.auth.onAuthStateChange(async (event, currentSession) => {
+                if (currentSession) {
+                    CURRENT_USER_ID = currentSession.user.id;
+                    searchBar.style.display = 'block';
+                    await fetchAndShowMemes(client, container);
+                }
+            });
         }
 
-        async function fetchMemes() {
-            const { data: captions } = await supabase.from('captions').select('*');
+        async function fetchAndShowMemes(client, container) {
+            // 1. Fetch Captions
+            const { data: captions, error } = await client.from('captions').select('*');
+            if (error) { logMsg("Error captions: " + error.message, "red"); return; }
+
+            // 2. Fetch Images
             const imageIds = captions.map(c => c.image_id);
-            const { data: images } = await supabase.from('images').select('id, url').in('id', imageIds);
+            const { data: images } = await client.from('images').select('id, url').in('id', imageIds);
             const imageMap = {};
-            images.forEach(img => imageMap[img.id] = img.url);
+            if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-            allMemes = captions.map(c => ({ ...c, url: imageMap[c.image_id] }));
-            renderStack();
+            // 3. Load Local Votes
+            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+            const localKeys = Object.keys(localVotes);
+
+            // 4. Fetch Global Totals
+            const { data: allVotes } = await client.from('caption_votes').select('*').limit(2000);
+
+            // 5. Calculate Stats
+            voteStats = {};
+
+            // A. Add up DB votes
+            if (allVotes) {
+                allVotes.forEach(v => {
+                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
+                    if (v.profile_id !== CURRENT_USER_ID) {
+                        voteStats[v.caption_id].total += parseInt(v.vote_value);
+                    }
+                });
+            }
+
+            // B. Add My Local Votes
+            localKeys.forEach(captionId => {
+                if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
+                const myVal = Number(localVotes[captionId]);
+                voteStats[captionId].myVote = myVal;
+                voteStats[captionId].total += myVal;
+            });
+
+            // 6. Render
+            allMemes = captions.map(item => ({
+                ...item,
+                imageUrl: imageMap[item.image_id] || null
+            }));
+
+            renderGrid(allMemes, container);
+            setupSearch(allMemes, container);
         }
 
-        function renderStack() {
-            const view = document.getElementById('content-view');
-            view.innerHTML = "";
-            
-            if (currentMemeIndex >= allMemes.length) {
-                view.innerHTML = "<p style='text-align:center;'>You've finished the rot! 🔚</p>";
+        function renderGrid(memes, container) {
+            if (memes.length === 0) {
+                container.innerHTML = `<p style="text-align:center;">No vibes found.</p>`;
                 return;
             }
 
-            const meme = allMemes[currentMemeIndex];
-            const localComments = JSON.parse(localStorage.getItem(`comments_${meme.id}`) || '[]');
-            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
-            const myVote = localVotes[meme.id] || 0;
-
-            const card = document.createElement('div');
-            card.className = 'meme-card';
-            card.innerHTML = `
-                <img src="${meme.url}" class="meme-image" draggable="false">
-                <div class="card-text">${meme.content}</div>
-                <div class="stat-bar">
-                    <span><i class="fa-solid fa-arrow-up"></i> ${meme.votes + (myVote)}</span>
-                    <span><i class="fa-solid fa-comment"></i> ${localComments.length}</span>
+            let html = `
+                <div style="text-align: right; margin-bottom: 20px;">
+                    <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
+                        <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                    </button>
                 </div>
-                <div class="comment-area">
-                    ${localComments.map(c => `<div style="border-bottom:1px solid #eee; padding:5px;">匿名: ${c}</div>`).join('')}
-                </div>
-                <div class="comment-input-box">
-                    <input type="text" placeholder="Add anonymous comment..." onkeydown="if(event.key==='Enter') addLocalComment('${meme.id}', this)">
-                </div>
-            `;
-
-            view.appendChild(card);
-            setupSwipe(card);
-        }
-
-        function setupSwipe(element) {
-            const hammer = new Hammer(element);
-            hammer.on('pan', (e) => {
-                element.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX / 20}deg)`;
-            });
-            hammer.on('panend', (e) => {
-                if (e.deltaX > 150) swipeRight();
-                else if (e.deltaX < -150) swipeLeft();
-                else element.style.transform = '';
-            });
-        }
-
-        function swipeRight() { handleVote(1); }
-        function swipeLeft() { handleVote(-1); }
-
-        async function handleVote(val) {
-            const meme = allMemes[currentMemeIndex];
-            actionHistory.push({ index: currentMemeIndex, memeId: meme.id, val: val });
+                <ul>`;
             
-            // Save Local
-            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
-            localVotes[meme.id] = val;
-            localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
+            memes.forEach(item => {
+                const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
+                const displayUrl = item.imageUrl || fallbackGif;
+                
+                const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+                const upActive = stats.myVote === 1 ? 'active up' : '';
+                const downActive = stats.myVote === -1 ? 'active down' : '';
 
-            // Save DB
-            await supabase.from('caption_votes').upsert({
-                profile_id: CURRENT_USER_ID,
-                caption_id: meme.id,
-                vote_value: val,
-                created_datetime_utc: new Date().toISOString()
+                html += `
+                    <li id="card-${item.id}">
+                        <img src="${displayUrl}" class="meme-image" alt="Meme" 
+                             onerror="this.onerror=null; this.src='${fallbackGif}';">
+                        
+                        <div class="card-content">
+                            ✨ ${item.content}
+                        </div>
+
+                        <div class="actions">
+                            <div class="vote-controls">
+                                <button class="vote-btn ${upActive} up-btn" onclick="handleVote('${item.id}', 1)">
+                                    <i class="fa-solid fa-arrow-up"></i>
+                                </button>
+                                
+                                <span class="vote-count" id="count-${item.id}">${stats.total}</span>
+                                
+                                <button class="vote-btn ${downActive} down-btn" onclick="handleVote('${item.id}', -1)">
+                                    <i class="fa-solid fa-arrow-down"></i>
+                                </button>
+                            </div>
+                            <small style="color:#aaa;">ID: ${item.id.substring(0,4)}</small>
+                        </div>
+                    </li>`;
             });
-
-            currentMemeIndex++;
-            renderStack();
+            container.innerHTML = html + `</ul>`;
         }
 
-        function undoLastAction() {
-            if (actionHistory.length === 0) return;
-            const last = actionHistory.pop();
-            currentMemeIndex = last.index;
-            renderStack();
-        }
-
-        function addLocalComment(memeId, input) {
-            if (!input.value.trim()) return;
-            const comments = JSON.parse(localStorage.getItem(`comments_${memeId}`) || '[]');
-            comments.push(input.value);
-            localStorage.setItem(`comments_${memeId}`, JSON.stringify(comments));
-            input.value = "";
-            renderStack();
-        }
-
-        async function signIn() {
-            await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: { redirectTo: window.location.origin + '/auth/callback' }
+        function setupSearch(memes, container) {
+            const searchInput = document.getElementById('search-input');
+            const newSearch = searchInput.cloneNode(true);
+            searchInput.parentNode.replaceChild(newSearch, searchInput);
+            newSearch.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                const filtered = memes.filter(m => m.content && m.content.toLowerCase().includes(term));
+                renderGrid(filtered, container);
             });
         }
 
-        renderApp();
+        // --- HANDLER ---
+        async function handleVote(captionId, newValue) {
+            if (!CURRENT_USER_ID) { alert("Login first!"); return; }
+
+            try {
+                const client = getClient();
+                const now = new Date().toISOString(); 
+                
+                const countSpan = document.getElementById(`count-${captionId}`);
+                let currentTotal = parseInt(countSpan.innerText) || 0;
+                
+                if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
+                const currentVoteValue = voteStats[captionId].myVote;
+
+                let nextVoteValue = 0;
+                
+                if (currentVoteValue === newValue) {
+                    updateUIColors(captionId, 0);
+                    countSpan.innerText = currentTotal - newValue;
+                    nextVoteValue = 0;
+                } else if (currentVoteValue === 0) {
+                    updateUIColors(captionId, newValue);
+                    countSpan.innerText = currentTotal + newValue;
+                    nextVoteValue = newValue;
+                } else {
+                    updateUIColors(captionId, newValue);
+                    countSpan.innerText = currentTotal + (newValue * 2);
+                    nextVoteValue = newValue;
+                }
+
+                // Update Local Storage
+                const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+                if (nextVoteValue === 0) delete localVotes[captionId];
+                else localVotes[captionId] = nextVoteValue;
+                localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
+                voteStats[captionId].myVote = nextVoteValue;
+
+                // Update DB
+                const { error: upsertError } = await client.from('caption_votes').upsert({
+                    profile_id: CURRENT_USER_ID,
+                    caption_id: captionId,
+                    vote_value: nextVoteValue,
+                    created_datetime_utc: now,
+                    modified_datetime_utc: now
+                }, { onConflict: 'profile_id,caption_id' });
+
+                if (upsertError) {
+                    await client.from('caption_votes').insert({
+                        profile_id: CURRENT_USER_ID,
+                        caption_id: captionId,
+                        vote_value: nextVoteValue,
+                        created_datetime_utc: now
+                    });
+                }
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function updateUIColors(captionId, value) {
+            const card = document.getElementById(`card-${captionId}`);
+            if (!card) return;
+            const upBtn = card.querySelector('.up-btn');
+            const downBtn = card.querySelector('.down-btn');
+            
+            if (upBtn) upBtn.classList.remove('active', 'up');
+            if (downBtn) downBtn.classList.remove('active', 'down');
+
+            if (value === 1 && upBtn) upBtn.classList.add('active', 'up');
+            if (value === -1 && downBtn) downBtn.classList.add('active', 'down');
+        }
+
+        renderApp()
     </script>
 </body>
 </html>
