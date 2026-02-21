@@ -184,6 +184,33 @@ p.subtitle {
   color: #fecaca;
 }
 
+.upload-view-panel {
+  max-width: 900px;
+  margin: 0 auto 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.upload-results {
+  margin-top: 16px;
+}
+
+.upload-results-title {
+  margin: 0 0 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  color: #e2e8f0;
+}
+
+.upload-empty {
+  color: #94a3b8;
+  text-align: center;
+  padding: 16px 0 8px;
+}
+
 #search-input {
   width: 100%;
   max-width: 760px;

@@ -21,6 +21,9 @@
       <button id="tab-swipe" class="side-tab" onclick="switchView('swipe')">
          <i class="fa-solid fa-hand-pointer"></i> Swipe
       </button>
+      <button id="tab-upload" class="side-tab" onclick="switchView('upload')">
+         <i class="fa-solid fa-upload"></i> Upload
+      </button>
    </aside>
 
    <div class="container">
@@ -29,15 +32,6 @@
 
        <div class="search-wrapper" style="display: none;">
            <input type="text" id="search-input" placeholder="Search captions...">
-           <div class="upload-wrapper">
-               <label class="upload-label" for="image-upload">Upload Image</label>
-               <input
-                   type="file"
-                   id="image-upload"
-                   accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic"
-               >
-               <div id="upload-status" class="upload-status"></div>
-           </div>
        </div>
 
        <div id="content-view">
@@ -62,6 +56,7 @@
        let swipeIndex = 0;
        let swipeHistory = [];
        let currentSearchTerm = '';
+       let generatedMemes = [];
        const SWIPE_PROGRESS_KEY_PREFIX = 'swipe_progress_v1_';
        const PIPELINE_BASE_URL = 'https://api.almostcrackd.ai';
        const SUPPORTED_IMAGE_TYPES = new Set([
@@ -93,9 +88,17 @@
        function updateSideTabs() {
            const gridBtn = document.getElementById('tab-grid');
            const swipeBtn = document.getElementById('tab-swipe');
-           if (!gridBtn || !swipeBtn) return;
+           const uploadBtn = document.getElementById('tab-upload');
+           if (!gridBtn || !swipeBtn || !uploadBtn) return;
            gridBtn.classList.toggle('active', currentView === 'grid');
            swipeBtn.classList.toggle('active', currentView === 'swipe');
+           uploadBtn.classList.toggle('active', currentView === 'upload');
+       }
+
+       function updateTopControls() {
+           const searchBar = document.querySelector('.search-wrapper');
+           if (!searchBar) return;
+           searchBar.style.display = currentView === 'upload' ? 'none' : 'block';
        }
 
        function getFilteredMemes() {
@@ -106,6 +109,7 @@
        function switchView(view) {
            currentView = view;
            updateSideTabs();
+           updateTopControls();
            renderCurrentView();
        }
 
@@ -291,10 +295,17 @@
 
                const generated = Array.isArray(step4Data) ? step4Data : (step4Data.captions || []);
                const newCaptions = normalizeGeneratedCaptions(generated, cdnUrl);
-               allMemes = [...newCaptions, ...allMemes];
-
-               setUploadStatus(`Done. Added ${newCaptions.length} new caption(s).`);
-               draw();
+               if (newCaptions.length) {
+                   allMemes = [...newCaptions, ...allMemes];
+                   generatedMemes = [...newCaptions, ...generatedMemes];
+                   setUploadStatus(`Done. Added ${newCaptions.length} new caption(s).`);
+               } else {
+                   setUploadStatus('Upload complete, but no captions were returned.');
+               }
+               swipeIndex = 0;
+               swipeHistory = [];
+               saveSwipeProgress();
+               switchView('upload');
            } catch (err) {
                console.error('[Pipeline] Upload flow failed', err);
                setUploadStatus(err.message || 'Upload failed.', true);
@@ -324,7 +335,6 @@
            if (session) {
                CURRENT_USER_ID = session.user.id;
                CURRENT_ACCESS_TOKEN = session.access_token || null;
-               searchBar.style.display = 'block';
                sidebar.style.display = 'flex';
                document.body.classList.add('has-sidebar');
                await fetchAndShowMemes(client, container);
@@ -349,7 +359,6 @@
                if (currentSession) {
                    CURRENT_USER_ID = currentSession.user.id;
                    CURRENT_ACCESS_TOKEN = currentSession.access_token || null;
-                   searchBar.style.display = 'block';
                    sidebar.style.display = 'flex';
                    document.body.classList.add('has-sidebar');
                    await fetchAndShowMemes(client, container);
@@ -398,15 +407,80 @@
 
            restoreSwipeProgress();
            updateSideTabs();
+           updateTopControls();
            renderCurrentView(container);
            setupSearch(container);
-           setupUpload();
        }
 
        function renderCurrentView(container = document.getElementById('content-view')) {
+           if (currentView === 'upload') {
+               renderUploadView(container);
+               return;
+           }
            const memes = getFilteredMemes();
            if (currentView === 'swipe') renderSwipe(memes, container);
            else renderGrid(memes, container);
+       }
+
+       function renderUploadView(container) {
+           const generatedCount = generatedMemes.length;
+           let html = `
+               <div style="text-align: right; margin-bottom: 20px;">
+                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                   </button>
+               </div>
+               <section class="upload-view-panel">
+                   <div class="upload-wrapper">
+                       <label class="upload-label" for="image-upload">Upload Image</label>
+                       <input
+                           type="file"
+                           id="image-upload"
+                           accept="image/jpeg,image/jpg,image/png,image/webp,image/gif,image/heic"
+                       >
+                       <div id="upload-status" class="upload-status"></div>
+                   </div>
+               </section>
+               <section class="upload-results">
+                   <h3 class="upload-results-title">Generated Memes (${generatedCount})</h3>`;
+
+           if (!generatedCount) {
+               html += `<p class="upload-empty">Upload an image to generate captions. New results will show here.</p>`;
+           } else {
+               html += '<ul>';
+               generatedMemes.forEach(item => {
+                   const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
+                   const displayUrl = item.imageUrl || fallbackGif;
+
+                   const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+                   const upActive = stats.myVote === 1 ? 'active up' : '';
+                   const downActive = stats.myVote === -1 ? 'active down' : '';
+
+                   html += `
+                   <li id="card-${item.id}">
+                       <img src="${displayUrl}" class="meme-image" alt="Meme"
+                            onerror="this.onerror=null; this.src='${fallbackGif}';">
+                       <div class="card-content">${item.content}</div>
+                       <div class="actions">
+                           <div class="vote-controls">
+                               <button class="vote-btn ${upActive} up-btn" onclick="handleVote('${item.id}', 1)">
+                                   <i class="fa-solid fa-arrow-up"></i>
+                               </button>
+                               <span class="vote-count" id="count-${item.id}">${stats.total}</span>
+                               <button class="vote-btn ${downActive} down-btn" onclick="handleVote('${item.id}', -1)">
+                                   <i class="fa-solid fa-arrow-down"></i>
+                               </button>
+                           </div>
+                           <small style="color:#aaa;">ID: ${item.id.substring(0,4)}</small>
+                       </div>
+                   </li>`;
+               });
+               html += '</ul>';
+           }
+
+           html += '</section>';
+           container.innerHTML = html;
+           setupUpload();
        }
 
        function renderGrid(memes, container) {
