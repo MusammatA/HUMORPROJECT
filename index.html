@@ -282,7 +282,7 @@
                            <i class="fa-solid fa-arrow-left"></i> Undo
                        </button>
                    </div>
-                   <div class="swipe-card" id="swipe-card-${item.id}" onclick="handleSwipeTap(event)">
+                   <div class="swipe-card" id="swipe-card-${item.id}">
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
                             onerror="this.onerror=null; this.src='${fallbackGif}';">
                        <div class="card-content">✨ ${item.content}</div>
@@ -320,27 +320,36 @@
            renderCurrentView();
        }
 
-       function handleSwipeTap(event) {
-           const card = event.currentTarget;
-           const rect = card.getBoundingClientRect();
-           const isRight = (event.clientX - rect.left) > (rect.width / 2);
-           handleSwipeChoice(isRight ? 1 : -1);
-       }
-
        function bindSwipeGestures(cardId) {
            const card = document.getElementById(cardId);
            if (!card) return;
+           let lastTouchAt = 0;
            let startX = null;
+
+           card.addEventListener('click', (event) => {
+               // Ignore synthetic click fired after touchend.
+               if (Date.now() - lastTouchAt < 350) return;
+               const rect = card.getBoundingClientRect();
+               const isRight = (event.clientX - rect.left) > (rect.width / 2);
+               handleSwipeChoice(isRight ? 1 : -1);
+           });
+
            card.addEventListener('touchstart', (e) => {
                startX = e.changedTouches[0].clientX;
            }, { passive: true });
            card.addEventListener('touchend', (e) => {
                if (startX == null) return;
+               lastTouchAt = Date.now();
                const endX = e.changedTouches[0].clientX;
                const deltaX = endX - startX;
                startX = null;
-               if (Math.abs(deltaX) < 40) return;
-               handleSwipeChoice(deltaX > 0 ? 1 : -1);
+               if (Math.abs(deltaX) >= 40) {
+                   handleSwipeChoice(deltaX > 0 ? 1 : -1);
+                   return;
+               }
+               const rect = card.getBoundingClientRect();
+               const touchX = endX - rect.left;
+               handleSwipeChoice(touchX > (rect.width / 2) ? 1 : -1);
            }, { passive: true });
        }
 

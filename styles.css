@@ -194,10 +194,10 @@ li:hover {
 
 .meme-image {
    width: 100%;
-   height: 250px;
-   object-fit: cover;
+   height: 320px;
+   object-fit: contain;
    border-bottom: 3px solid var(--text-main);
-   background: #eee;
+   background: #111;
 }
 
 
