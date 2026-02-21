@@ -1,40 +1,51 @@
-#<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Completing Sign-In...</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Redirecting...</title>
+   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-  <p style="text-align: center; margin-top: 50px; font-family: sans-serif;">Completing sign-in...</p>
+   <p style="text-align: center; margin-top: 50px; font-family: sans-serif;">Completing sign-in...</p>
 
-  <script>
-    const SUPABASE_URL = 'https://secure.almostcrackd.ai';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
 
-    async function completeAuth() {
-      try {
-        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
+   <script>
+       console.log('Callback page loaded');
+       console.log('Current URL:', window.location.href);
+      
+       const SUPABASE_URL = 'https://secure.almostcrackd.ai'
+       const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ'
+      
+       try {
+           console.log('Creating Supabase client...');
+           const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+           console.log('Supabase client created');
 
-        if (code) {
-          const { error } = await client.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else {
-          const { error } = await client.auth.getSession();
-          if (error) throw error;
-        }
 
-        window.location.replace('/');
-      } catch (error) {
-        console.error('Auth callback error:', error);
-        document.body.innerHTML = '<p style="text-align: center; color: red; font-family: sans-serif; margin-top: 50px;">Sign-in failed: ' + (error?.message || 'Unknown error') + '</p>';
-      }
-    }
-
-    completeAuth();
-  </script>
+           // This reads #access_token from the URL hash and stores the session
+           console.log('Getting session...');
+           client.auth.getSession().then((response) => {
+               console.log('Session response:', response);
+              
+               if (response.error) {
+                   console.error('Session error:', response.error);
+                   document.body.innerHTML = '<p style="text-align: center; color: red;">Error: ' + response.error.message + '</p>';
+                   return;
+               }
+              
+               console.log('Redirecting to home...');
+               setTimeout(() => {
+                   window.location.href = "/";
+               }, 500);
+           }).catch((error) => {
+               console.error('Caught error:', error);
+               document.body.innerHTML = '<p style="text-align: center; color: red;">Error: ' + error.message + '</p>';
+           });
+       } catch (error) {
+           console.error('Init error:', error);
+           document.body.innerHTML = '<p style="text-align: center; color: red;">Error: ' + error.message + '</p>';
+       }
+   </script>
 </body>
 </html>
