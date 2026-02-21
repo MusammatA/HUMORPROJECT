@@ -24,6 +24,9 @@
       <button id="tab-upload" class="side-tab" onclick="switchView('upload')">
          <i class="fa-solid fa-upload"></i> Create
       </button>
+      <button id="tab-account" class="side-tab" onclick="switchView('account')">
+         <i class="fa-solid fa-user-gear"></i> Account
+      </button>
    </aside>
 
    <div class="container">
@@ -59,6 +62,8 @@
        let swipeHistory = [];
        let currentSearchTerm = '';
        let generatedMemes = [];
+       let imageUrlById = {};
+       let AUTO_REFRESH_TIMER = null;
        let GENERATION_UI_STATE = {
            status: 'idle',
            modelTag: 'caption-pipeline-v1',
@@ -68,6 +73,7 @@
        const SWIPE_PROGRESS_KEY_PREFIX = 'swipe_progress_v1_';
        const GENERATED_MEMES_KEY_PREFIX = 'generated_memes_v1_';
        const PIPELINE_BASE_URL = 'https://api.almostcrackd.ai';
+       const FEED_REFRESH_MS = 30000;
        const SUPPORTED_IMAGE_TYPES = new Set([
            'image/jpeg',
            'image/jpg',
@@ -170,16 +176,18 @@
            const gridBtn = document.getElementById('tab-grid');
            const swipeBtn = document.getElementById('tab-swipe');
            const uploadBtn = document.getElementById('tab-upload');
-           if (!gridBtn || !swipeBtn || !uploadBtn) return;
+           const accountBtn = document.getElementById('tab-account');
+           if (!gridBtn || !swipeBtn || !uploadBtn || !accountBtn) return;
            gridBtn.classList.toggle('active', currentView === 'grid');
            swipeBtn.classList.toggle('active', currentView === 'swipe');
            uploadBtn.classList.toggle('active', currentView === 'upload');
+           accountBtn.classList.toggle('active', currentView === 'account');
        }
 
        function updateTopControls() {
            const searchBar = document.querySelector('.search-wrapper');
            if (!searchBar) return;
-           searchBar.style.display = currentView === 'upload' ? 'none' : 'block';
+           searchBar.style.display = (currentView === 'upload' || currentView === 'account') ? 'none' : 'block';
        }
 
        function getFilteredMemes() {
@@ -230,6 +238,53 @@
 
        function getGeneratedMemesKey() {
            return CURRENT_USER_ID ? `${GENERATED_MEMES_KEY_PREFIX}${CURRENT_USER_ID}` : null;
+       }
+
+       function getDisplayNameKey() {
+           return CURRENT_USER_ID ? `display_name_v1_${CURRENT_USER_ID}` : null;
+       }
+
+       function getCurrentDisplayName() {
+           const key = getDisplayNameKey();
+           if (!key) return CURRENT_UPLOADER_NAME;
+           try {
+               const saved = localStorage.getItem(key);
+               if (saved && saved.trim()) return saved.trim();
+           } catch (_err) {}
+           return CURRENT_UPLOADER_NAME;
+       }
+
+       function saveDisplayName(name) {
+           const clean = String(name || '').trim();
+           if (!CURRENT_USER_ID || !clean) return;
+           const key = getDisplayNameKey();
+           if (!key) return;
+           localStorage.setItem(key, clean);
+           CURRENT_UPLOADER_NAME = clean;
+       }
+
+       function isOwnedByCurrentUser(item) {
+           if (!item) return false;
+           if (item.uploaderEmail && CURRENT_USER_EMAIL && item.uploaderEmail === CURRENT_USER_EMAIL) return true;
+           if (item.imageUrl && CURRENT_USER_ID) return String(item.imageUrl).includes(`/${CURRENT_USER_ID}/`);
+           return false;
+       }
+
+       function getOwnedUploads() {
+           const groups = new Map();
+           allMemes.forEach(item => {
+               if (!isOwnedByCurrentUser(item)) return;
+               const imageId = item.image_id || `local-${item.id}`;
+               const existing = groups.get(imageId) || {
+                   imageId,
+                   imageUrl: item.imageUrl || null,
+                   captions: []
+               };
+               if (!existing.imageUrl && item.imageUrl) existing.imageUrl = item.imageUrl;
+               existing.captions.push(item);
+               groups.set(imageId, existing);
+           });
+           return Array.from(groups.values()).sort((a, b) => (b.captions.length - a.captions.length));
        }
 
        function dedupeMemes(memes) {
@@ -384,6 +439,18 @@
            return `<div class="uploader-meta">Uploaded by ${item.uploaderName}</div>`;
        }
 
+       function renderHeaderActions() {
+           return `
+               <div class="top-actions">
+                   <button class="logout-btn" onclick="refreshFeed(true)">
+                       <i class="fa-solid fa-rotate"></i> Refresh feed
+                   </button>
+                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
+                   </button>
+               </div>`;
+       }
+
        function renderAIMeta(item) {
            if (!item || !item.aiGenerated) return '';
            const model = item.aiModelTag || 'caption-pipeline-v1';
@@ -523,6 +590,70 @@
                newInput.value = '';
            });
        }
+
+       async function refreshFeed(showNotice = false) {
+           const container = document.getElementById('content-view');
+           const client = getClient();
+           await fetchAndShowMemes(client, container);
+           if (showNotice) setUploadStatus('Feed refreshed.');
+       }
+
+       function startAutoRefresh() {
+           if (AUTO_REFRESH_TIMER) clearInterval(AUTO_REFRESH_TIMER);
+           AUTO_REFRESH_TIMER = setInterval(() => {
+               refreshFeed(false).catch(err => console.error('[AutoRefresh]', err));
+           }, FEED_REFRESH_MS);
+       }
+
+       function stopAutoRefresh() {
+           if (!AUTO_REFRESH_TIMER) return;
+           clearInterval(AUTO_REFRESH_TIMER);
+           AUTO_REFRESH_TIMER = null;
+       }
+
+       async function deleteUploadByImageId(imageId) {
+           if (!CURRENT_USER_ID) return;
+           if (!imageId) {
+               alert('Cannot delete this upload because the image id is missing.');
+               return;
+           }
+           const confirmDelete = window.confirm('Delete this upload and all captions from it?');
+           if (!confirmDelete) return;
+
+            if (String(imageId).startsWith('local-')) {
+                const localCaptionId = String(imageId).replace('local-', '');
+                allMemes = allMemes.filter(item => item.id !== localCaptionId);
+                generatedMemes = generatedMemes.filter(item => item.id !== localCaptionId);
+                saveGeneratedMemes();
+                renderCurrentView();
+                return;
+            }
+
+           const client = getClient();
+           const { error: captionDeleteError } = await client.from('captions').delete().eq('image_id', imageId);
+           if (captionDeleteError) {
+               alert(`Delete failed: ${captionDeleteError.message}`);
+               return;
+           }
+           await client.from('images').delete().eq('id', imageId);
+
+           allMemes = allMemes.filter(item => item.image_id !== imageId);
+           generatedMemes = generatedMemes.filter(item => item.image_id !== imageId);
+           saveGeneratedMemes();
+           renderCurrentView();
+       }
+
+       function handleSaveDisplayName() {
+           const input = document.getElementById('display-name-input');
+           if (!input) return;
+           const value = input.value.trim();
+           if (!value) {
+               alert('Display name cannot be empty.');
+               return;
+           }
+           saveDisplayName(value);
+           renderCurrentView();
+       }
       
        async function renderApp() {
            const container = document.getElementById('content-view');
@@ -536,13 +667,16 @@
                CURRENT_USER_ID = session.user.id;
                CURRENT_ACCESS_TOKEN = session.access_token || null;
                setCurrentUserIdentity(session.user);
+               CURRENT_UPLOADER_NAME = getCurrentDisplayName();
                sidebar.style.display = 'flex';
                document.body.classList.add('has-sidebar');
+               startAutoRefresh();
                await fetchAndShowMemes(client, container);
            } else {
                CURRENT_ACCESS_TOKEN = null;
                CURRENT_USER_EMAIL = '';
                CURRENT_UPLOADER_NAME = '';
+               stopAutoRefresh();
                searchBar.style.display = 'none';
                sidebar.style.display = 'none';
                document.body.classList.remove('has-sidebar');
@@ -563,13 +697,16 @@
                    CURRENT_USER_ID = currentSession.user.id;
                    CURRENT_ACCESS_TOKEN = currentSession.access_token || null;
                    setCurrentUserIdentity(currentSession.user);
+                   CURRENT_UPLOADER_NAME = getCurrentDisplayName();
                    sidebar.style.display = 'flex';
                    document.body.classList.add('has-sidebar');
+                   startAutoRefresh();
                    await fetchAndShowMemes(client, container);
                } else {
                    CURRENT_ACCESS_TOKEN = null;
                    CURRENT_USER_EMAIL = '';
                    CURRENT_UPLOADER_NAME = '';
+                   stopAutoRefresh();
                }
            });
        }
@@ -580,8 +717,8 @@
 
            const imageIds = captions.map(c => c.image_id);
            const { data: images } = await client.from('images').select('id, url').in('id', imageIds);
-           const imageMap = {};
-           if (images) images.forEach(img => imageMap[img.id] = img.url);
+           imageUrlById = {};
+           if (images) images.forEach(img => imageUrlById[img.id] = img.url);
 
            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
            const localKeys = Object.keys(localVotes);
@@ -608,7 +745,7 @@
 
            allMemes = captions.map(item => ({
                ...item,
-               imageUrl: imageMap[item.image_id] || null
+               imageUrl: imageUrlById[item.image_id] || null
            }));
            allMemes = dedupeMemes(allMemes);
 
@@ -627,6 +764,10 @@
                renderUploadView(container);
                return;
            }
+           if (currentView === 'account') {
+               renderAccountView(container);
+               return;
+           }
            const memes = getFilteredMemes();
            if (currentView === 'swipe') renderSwipe(memes, container);
            else renderGrid(memes, container);
@@ -635,11 +776,7 @@
        function renderUploadView(container) {
            const generatedCount = generatedMemes.length;
            let html = `
-               <div style="text-align: right; margin-bottom: 20px;">
-                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
-                   </button>
-               </div>
+               ${renderHeaderActions()}
                <section class="upload-view-panel">
                    <div class="gen-status-panel">
                        <div class="gen-status-row">
@@ -706,6 +843,51 @@
            setupUpload();
        }
 
+       function renderAccountView(container) {
+           const ownedUploads = getOwnedUploads();
+           const displayName = getCurrentDisplayName();
+           let html = `
+               ${renderHeaderActions()}
+               <section class="account-panel">
+                   <h3 class="account-title">Your Account</h3>
+                   <div class="account-row"><strong>Email:</strong> <span>${CURRENT_USER_EMAIL || 'Not available'}</span></div>
+                   <div class="account-row">
+                       <strong>Display name:</strong>
+                       <div class="account-name-controls">
+                           <input id="display-name-input" class="account-name-input" value="${displayName}" />
+                           <button class="logout-btn" onclick="handleSaveDisplayName()">
+                               <i class="fa-solid fa-floppy-disk"></i> Save
+                           </button>
+                       </div>
+                   </div>
+               </section>
+               <section class="account-panel">
+                   <h3 class="account-title">Your Uploads (${ownedUploads.length})</h3>`;
+
+           if (!ownedUploads.length) {
+               html += `<p class="upload-empty">No uploads found for this account yet.</p>`;
+           } else {
+               html += `<div class="account-upload-list">`;
+               ownedUploads.forEach(group => {
+                   const preview = group.imageUrl || "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
+                   html += `
+                       <article class="account-upload-item">
+                           <img class="account-upload-preview" src="${preview}" alt="Upload preview">
+                           <div class="account-upload-meta">
+                               <div><strong>Image ID:</strong> ${group.imageId}</div>
+                               <div><strong>Captions:</strong> ${group.captions.length}</div>
+                           </div>
+                           <button class="logout-btn danger" onclick="deleteUploadByImageId('${group.imageId}')">
+                               <i class="fa-solid fa-trash"></i> Delete Upload
+                           </button>
+                       </article>`;
+               });
+               html += `</div>`;
+           }
+           html += `</section>`;
+           container.innerHTML = html;
+       }
+
        function renderGrid(memes, container) {
            if (memes.length === 0) {
                container.innerHTML = `<p style="text-align:center;">No captions match your current filter.</p>`;
@@ -713,11 +895,7 @@
            }
 
            let html = `
-               <div style="text-align: right; margin-bottom: 20px;">
-                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
-                   </button>
-               </div>
+               ${renderHeaderActions()}
                <ul>`;
           
            memes.forEach(item => {
@@ -765,11 +943,7 @@
            if (swipeIndex < 0) swipeIndex = 0;
            if (swipeIndex >= memes.length) {
                container.innerHTML = `
-                   <div style="text-align: right; margin-bottom: 20px;">
-                       <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                           <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
-                       </button>
-                   </div>
+                   ${renderHeaderActions()}
                    <div class="swipe-panel">
                        <div class="swipe-hint">Deck complete. You rated this whole set.</div>
                        <div class="swipe-end-actions">
@@ -790,11 +964,7 @@
            const stats = voteStats[item.id] || { total: 0, myVote: 0 };
 
            container.innerHTML = `
-               <div style="text-align: right; margin-bottom: 20px;">
-                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
-                   </button>
-               </div>
+               ${renderHeaderActions()}
                <div class="swipe-panel">
                    <div class="swipe-hint">Left = pass · Right = approve · Swipe also works</div>
                    <div class="swipe-controls">
