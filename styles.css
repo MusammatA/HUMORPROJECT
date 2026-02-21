@@ -63,26 +63,44 @@ p.subtitle {
 }
 
 .auth-box {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 34px 28px;
-  text-align: center;
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.98) 0%, rgba(241, 245, 249, 0.98) 100%);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+  padding: 34px 28px 24px;
+  text-align: left;
   box-shadow: var(--shadow);
-  max-width: 430px;
+  max-width: 540px;
   margin: 60px auto;
 }
 
 .auth-box h2 {
   font-family: 'JetBrains Mono', monospace;
-  font-size: 1.6rem;
-  margin: 0 0 8px;
+  font-size: 2rem;
+  margin: 0 0 12px;
 }
 
 .auth-subtext {
-  font-size: 0.98rem;
+  font-size: 1rem;
   color: var(--ink-muted);
-  margin: 0 0 22px;
+  margin: 0 0 20px;
+}
+
+.auth-kicker {
+  font-size: 0.95rem;
+  letter-spacing: 0.35em;
+  color: #64748b;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.auth-meta {
+  margin-top: 14px;
+  background: #e2e8f0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #475569;
+  font-size: 0.9rem;
 }
 
 .login-btn,

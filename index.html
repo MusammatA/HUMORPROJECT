@@ -28,7 +28,7 @@
        <p class="subtitle">Fresh from the Database</p>
 
        <div class="search-wrapper" style="display: none;">
-           <input type="text" id="search-input" placeholder="🔍 Search for vibes, cats, or chaos...">
+           <input type="text" id="search-input" placeholder="Search captions...">
        </div>
 
        <div id="content-view">
@@ -155,11 +155,13 @@
                document.body.classList.remove('has-sidebar');
                container.innerHTML = `
                    <div class="auth-box">
-                       <h2>Login to see the memes</h2>
-                       <p class="auth-subtext">You need to be cool (and logged in) to vote.</p>
+                       <div class="auth-kicker">WELCOME</div>
+                       <h2>Brain Rot Central</h2>
+                       <p class="auth-subtext">Sign in with Google to access voting and swipe mode.</p>
                        <button class="login-btn" onclick="signIn()">
-                           <i class="fa-brands fa-google"></i> Login with Google
+                           <i class="fa-brands fa-google"></i> Continue with Google
                        </button>
+                       <div class="auth-meta">Redirect: /auth/callback</div>
                    </div>`;
            }
 
@@ -250,9 +252,7 @@
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
                             onerror="this.onerror=null; this.src='${fallbackGif}';">
                       
-                       <div class="card-content">
-                           ✨ ${item.content}
-                       </div>
+                       <div class="card-content">${item.content}</div>
 
                        <div class="actions">
                            <div class="vote-controls">
@@ -322,7 +322,7 @@
                    <div class="swipe-card" id="swipe-card-${item.id}">
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
                             onerror="this.onerror=null; this.src='${fallbackGif}';">
-                       <div class="card-content">✨ ${item.content}</div>
+                       <div class="card-content">${item.content}</div>
                        <div class="actions">
                            <div class="vote-controls">
                                <span class="vote-count">${stats.total}</span>
