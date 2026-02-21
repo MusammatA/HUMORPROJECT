@@ -9,33 +9,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="stylesheet" href="styles.css">
-  <script>
-    window.__appBooted = false;
-    window.__appLoadError = false;
-    window.__showBootError = function(msg) {
-      const el = document.getElementById('status-msg');
-      if (el) el.textContent = msg;
-    };
-
-    window.addEventListener('error', function(e) {
-      if (e && e.filename && e.filename.includes('app.js')) {
-        window.__showBootError('app.js runtime/parse error: ' + (e.message || 'Unknown error'));
-      }
-    });
-
-    window.addEventListener('DOMContentLoaded', function() {
-      setTimeout(function() {
-        if (window.__appLoadError) {
-          window.__showBootError('app.js failed to load. Verify /app.js is served by Vercel.');
-          return;
-        }
-        if (!window.__appBooted) {
-          window.__showBootError('App script did not start. Open /app.js directly and verify it is JavaScript, not HTML.');
-        }
-      }, 3500);
-    });
-  </script>
-  <script defer src="/app.js?v=20260221b" onerror="window.__appLoadError=true"></script>
 </head>
 <body>
   <div class="container">
@@ -51,5 +24,206 @@
       <p style="text-align: center; padding-top: 50px;" id="status-msg">Initializing the Rot...</p>
     </div>
   </div>
+
+  <script>
+    const SUPABASE_URL = 'https://secure.almostcrackd.ai';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const FALLBACK_GIF = 'https://media.giphy.com/media/26hkhKd9CQeRv7lqM/giphy.gif';
+
+    let allMemes = [];
+    let voteStats = {};
+    let currentView = 'grid';
+    let swipeIndex = 0;
+    let userId = null;
+
+    async function init() {
+      const { data: { session }, error } = await supabase.auth.getSession();
+      if (error) {
+        document.getElementById('content-view').innerHTML = '<p style="text-align:center;">Session check failed.</p>';
+        return;
+      }
+
+      if (!session) {
+        document.getElementById('content-view').innerHTML = `
+          <div class="auth-box">
+            <h2>Login to see the memes</h2>
+            <button class="login-btn" onclick="login()"><i class="fa-brands fa-google"></i> Login with Google</button>
+          </div>`;
+        return;
+      }
+
+      userId = session.user.id;
+      document.getElementById('nav-tabs').style.display = 'flex';
+      await loadData();
+    }
+
+    async function loadData() {
+      const status = document.getElementById('status-msg');
+      if (status) status.innerText = 'Fetching the rot...';
+
+      try {
+        const captionsRes = await supabase.from('captions').select('*');
+        const imagesRes = await supabase.from('images').select('id, url');
+        const votesRes = await supabase.from('caption_votes').select('caption_id, profile_id, vote_value');
+
+        if (captionsRes.error) throw captionsRes.error;
+        if (imagesRes.error) throw imagesRes.error;
+        if (votesRes.error) throw votesRes.error;
+
+        const captions = captionsRes.data || [];
+        const images = imagesRes.data || [];
+        const votes = votesRes.data || [];
+
+        const imageMap = Object.fromEntries(images.map(i => [i.id, i.url]));
+        const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+
+        voteStats = {};
+        votes.forEach(v => {
+          if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
+          if (v.profile_id !== userId) {
+            voteStats[v.caption_id].total += Number(v.vote_value) || 0;
+          }
+        });
+
+        Object.keys(localVotes).forEach(id => {
+          if (!voteStats[id]) voteStats[id] = { total: 0, myVote: 0 };
+          const myVote = Number(localVotes[id]) || 0;
+          voteStats[id].myVote = myVote;
+          voteStats[id].total += myVote;
+        });
+
+        allMemes = captions.map(c => ({ ...c, url: imageMap[c.image_id] || FALLBACK_GIF }));
+        swipeIndex = Math.min(swipeIndex, Math.max(allMemes.length - 1, 0));
+        draw();
+      } catch (err) {
+        console.error('Load failed:', err);
+        document.getElementById('content-view').innerHTML = '<p style="text-align:center;">Failed to load data. Refresh page.</p>';
+      }
+    }
+
+    function switchView(view) {
+      currentView = view;
+      document.getElementById('btn-grid').classList.toggle('active', view === 'grid');
+      document.getElementById('btn-swipe').classList.toggle('active', view === 'swipe');
+      draw();
+    }
+
+    function draw() {
+      const container = document.getElementById('content-view');
+      container.innerHTML = '';
+      if (currentView === 'grid') renderGrid(container);
+      else renderSwipe(container);
+    }
+
+    function renderGrid(container) {
+      if (!allMemes.length) {
+        container.innerHTML = '<p style="text-align:center;">No memes found.</p>';
+        return;
+      }
+
+      let html = '<ul class="grid-list">';
+      allMemes.forEach(item => {
+        const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+        html += `
+          <li>
+            <img src="${item.url}" class="meme-image" onerror="this.onerror=null; this.src='${FALLBACK_GIF}'" alt="Meme">
+            <div class="card-content">✨ ${item.content || ''}</div>
+            <div class="actions"><span class="vote-count">${stats.total}</span></div>
+          </li>`;
+      });
+
+      container.innerHTML = html + '</ul>';
+    }
+
+    function renderSwipe(container) {
+      if (!allMemes.length) {
+        container.innerHTML = '<p style="text-align:center; padding-top:50px;">No memes available.</p>';
+        return;
+      }
+
+      if (swipeIndex >= allMemes.length) {
+        container.innerHTML = '<p style="text-align:center; padding-top:50px;">End of the deck.</p>';
+        return;
+      }
+
+      const item = allMemes[swipeIndex];
+      container.innerHTML = `
+        <div id="swipe-container">
+          <div class="click-zone click-left" onclick="handleSwipeVote(-1)"></div>
+          <div class="click-zone click-right" onclick="handleSwipeVote(1)"></div>
+          <div class="swipe-card" id="card-el">
+            <img src="${item.url}" class="meme-image" draggable="false" onerror="this.onerror=null; this.src='${FALLBACK_GIF}'" alt="Meme">
+            <div class="card-content">✨ ${item.content || ''}</div>
+          </div>
+          <p style="text-align:center; color:#888; margin-top:15px;">Tap sides to vote | Swipe to toss</p>
+        </div>`;
+
+      const cardEl = document.getElementById('card-el');
+      const mc = new Hammer(cardEl);
+      mc.on('pan', e => {
+        cardEl.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX / 20}deg)`;
+      });
+      mc.on('panend', e => {
+        if (Math.abs(e.deltaX) > 150) {
+          handleSwipeVote(e.deltaX > 0 ? 1 : -1);
+        } else {
+          cardEl.style.transform = '';
+        }
+      });
+    }
+
+    async function handleSwipeVote(v) {
+      if (!userId || swipeIndex >= allMemes.length) return;
+
+      const item = allMemes[swipeIndex];
+      const cardEl = document.getElementById('card-el');
+      if (cardEl) {
+        cardEl.style.transition = 'transform 0.3s ease';
+        cardEl.style.transform = v > 0
+          ? 'translateX(1000px) rotate(30deg)'
+          : 'translateX(-1000px) rotate(-30deg)';
+      }
+
+      const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
+      const prevMine = Number(localVotes[item.id]) || 0;
+      const prevStats = voteStats[item.id] || { total: 0, myVote: 0 };
+      const nextTotal = (prevStats.total - prevMine) + v;
+
+      voteStats[item.id] = { total: nextTotal, myVote: v };
+      localVotes[item.id] = v;
+      localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
+
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('caption_votes')
+        .upsert({
+          profile_id: userId,
+          caption_id: item.id,
+          vote_value: v,
+          modified_datetime_utc: now,
+          created_datetime_utc: now
+        }, { onConflict: 'profile_id,caption_id' });
+
+      if (error) {
+        console.error('Vote save failed:', error);
+      }
+
+      setTimeout(() => {
+        swipeIndex += 1;
+        draw();
+      }, 200);
+    }
+
+    function login() {
+      supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin + '/auth/callback' }
+      });
+    }
+
+    init();
+  </script>
 </body>
 </html>
