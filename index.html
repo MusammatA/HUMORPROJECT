@@ -52,6 +52,7 @@
        let swipeIndex = 0;
        let swipeHistory = [];
        let currentSearchTerm = '';
+       const SWIPE_PROGRESS_KEY_PREFIX = 'swipe_progress_v1_';
 
        function getClient() {
            if (!supabaseClient) {
@@ -87,6 +88,43 @@
            currentView = view;
            updateSideTabs();
            renderCurrentView();
+       }
+
+       function getSwipeProgressKey() {
+           return CURRENT_USER_ID ? `${SWIPE_PROGRESS_KEY_PREFIX}${CURRENT_USER_ID}` : null;
+       }
+
+       function saveSwipeProgress() {
+           if (!CURRENT_USER_ID || currentSearchTerm) return;
+           const key = getSwipeProgressKey();
+           if (!key) return;
+           localStorage.setItem(key, JSON.stringify({
+               swipeIndex,
+               swipeHistory
+           }));
+       }
+
+       function restoreSwipeProgress() {
+           if (!CURRENT_USER_ID) return;
+           const key = getSwipeProgressKey();
+           if (!key) return;
+           const raw = localStorage.getItem(key);
+           if (!raw) {
+               swipeIndex = 0;
+               swipeHistory = [];
+               return;
+           }
+           try {
+               const parsed = JSON.parse(raw);
+               swipeIndex = Number(parsed.swipeIndex);
+               if (!Number.isFinite(swipeIndex) || swipeIndex < 0) swipeIndex = 0;
+               swipeHistory = Array.isArray(parsed.swipeHistory)
+                   ? parsed.swipeHistory.filter(n => Number.isInteger(n) && n >= 0)
+                   : [];
+           } catch (_err) {
+               swipeIndex = 0;
+               swipeHistory = [];
+           }
        }
 
        async function signIn() {
@@ -173,8 +211,7 @@
                imageUrl: imageMap[item.image_id] || null
            }));
 
-           swipeIndex = 0;
-           swipeHistory = [];
+           restoreSwipeProgress();
            updateSideTabs();
            renderCurrentView(container);
            setupSearch(container);
@@ -306,6 +343,7 @@
                currentSearchTerm = e.target.value.toLowerCase();
                swipeIndex = 0;
                swipeHistory = [];
+               if (!currentSearchTerm) saveSwipeProgress();
                renderCurrentView(container);
            });
        }
@@ -319,6 +357,7 @@
            handleVote(currentMeme.id, voteValue, true, true).catch(console.error);
            await new Promise(resolve => setTimeout(resolve, 140));
            swipeIndex = swipeIndex + 1;
+           saveSwipeProgress();
            renderCurrentView();
        }
 
@@ -365,12 +404,14 @@
        function rewindSwipe() {
            if (!swipeHistory.length) return;
            swipeIndex = swipeHistory.pop();
+           saveSwipeProgress();
            renderCurrentView();
        }
 
        function restartSwipeDeck() {
            swipeIndex = 0;
            swipeHistory = [];
+           saveSwipeProgress();
            renderCurrentView();
        }
 
