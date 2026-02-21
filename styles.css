@@ -18,7 +18,7 @@
 }
 
 body {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'IBM Plex Mono', monospace;
   color: var(--ink);
   margin: 0;
   padding: 40px 20px;
@@ -35,7 +35,7 @@ body {
 }
 
 h1 {
-  font-family: 'Sora', sans-serif;
+  font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   font-size: clamp(2.3rem, 4.6vw, 4rem);
   letter-spacing: -0.03em;
@@ -54,7 +54,7 @@ p.subtitle {
   align-items: center;
   justify-content: center;
   padding: 8px 16px;
-  border-radius: 999px;
+  border-radius: 6px;
   border: 1px solid rgba(147, 197, 253, 0.45);
   position: relative;
   left: 50%;
@@ -65,7 +65,7 @@ p.subtitle {
 .auth-box {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 6px;
   padding: 34px 28px;
   text-align: center;
   box-shadow: var(--shadow);
@@ -74,7 +74,7 @@ p.subtitle {
 }
 
 .auth-box h2 {
-  font-family: 'Sora', sans-serif;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 1.6rem;
   margin: 0 0 8px;
 }
@@ -88,10 +88,10 @@ p.subtitle {
 .login-btn,
 .logout-btn {
   border: 1px solid transparent;
-  border-radius: 12px;
+  border-radius: 4px;
   cursor: pointer;
   font-weight: 700;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'IBM Plex Mono', monospace;
   transition: transform 0.12s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
@@ -136,8 +136,8 @@ p.subtitle {
   padding: 15px 20px;
   font-size: 1.05rem;
   border: 1px solid rgba(191, 219, 254, 0.32);
-  border-radius: 14px;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   background: rgba(255, 255, 255, 0.93);
@@ -161,7 +161,7 @@ ul {
 li {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 6px;
   overflow: hidden;
   box-shadow: var(--shadow);
   transition: transform 0.14s ease, box-shadow 0.2s ease;
@@ -203,7 +203,7 @@ li:hover {
   gap: 10px;
   background: #fff;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 5px 10px;
 }
 
@@ -249,7 +249,7 @@ body.has-sidebar {
   width: 150px;
   background: rgba(248, 250, 252, 0.95);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 6px;
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -259,7 +259,7 @@ body.has-sidebar {
 }
 
 .sidebar-title {
-  font-family: 'Sora', sans-serif;
+  font-family: 'JetBrains Mono', monospace;
   font-weight: 700;
   font-size: 0.95rem;
   text-align: center;
@@ -271,11 +271,11 @@ body.has-sidebar {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--ink);
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 10px 8px;
   text-align: left;
   font-weight: 700;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'IBM Plex Mono', monospace;
   cursor: pointer;
 }
 
@@ -314,7 +314,7 @@ body.has-sidebar {
   position: relative;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 6px;
   overflow: hidden;
   box-shadow: var(--shadow);
   transition: box-shadow 0.15s ease;
