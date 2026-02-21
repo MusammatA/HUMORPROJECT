@@ -35,7 +35,7 @@
        </div>
 
        <div id="content-view">
-           <p style="text-align: center;">Warming up the meme engine...</p>
+           <p class="loading-copy" style="text-align: center;">Warming up the meme engine...</p>
        </div>
    </div>
 
@@ -130,6 +130,7 @@
            const modelEl = document.getElementById('gen-model-tag');
            const timeEl = document.getElementById('gen-updated-time');
            const dotEl = document.getElementById('gen-status-dot');
+           const uploadStatusEl = document.getElementById('upload-status');
            if (!statusEl || !modelEl || !timeEl || !dotEl) return;
 
            statusEl.textContent = `Generation: ${GENERATION_UI_STATE.message}`;
@@ -138,6 +139,10 @@
 
            dotEl.classList.remove('idle', 'running', 'ready', 'error');
            dotEl.classList.add(GENERATION_UI_STATE.status || 'idle');
+
+           if (uploadStatusEl) {
+               uploadStatusEl.classList.toggle('running', GENERATION_UI_STATE.status === 'running');
+           }
        }
 
        function inferUploaderFromImageUrl(imageUrl) {
