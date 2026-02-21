@@ -58,6 +58,7 @@
        let currentSearchTerm = '';
        let generatedMemes = [];
        const SWIPE_PROGRESS_KEY_PREFIX = 'swipe_progress_v1_';
+       const GENERATED_MEMES_KEY_PREFIX = 'generated_memes_v1_';
        const PIPELINE_BASE_URL = 'https://api.almostcrackd.ai';
        const SUPPORTED_IMAGE_TYPES = new Set([
            'image/jpeg',
@@ -147,6 +148,55 @@
            return CURRENT_USER_ID ? `${SWIPE_PROGRESS_KEY_PREFIX}${CURRENT_USER_ID}` : null;
        }
 
+       function getGeneratedMemesKey() {
+           return CURRENT_USER_ID ? `${GENERATED_MEMES_KEY_PREFIX}${CURRENT_USER_ID}` : null;
+       }
+
+       function dedupeMemes(memes) {
+           const byId = new Map();
+           const out = [];
+           (Array.isArray(memes) ? memes : []).forEach((item, index) => {
+               if (!item || typeof item !== 'object') return;
+               const id = item.id || item.caption_id || `generated-fallback-${index}`;
+               if (byId.has(id)) return;
+               const normalized = {
+                   ...item,
+                   id,
+                   content: item.content || item.caption_text || '',
+                   imageUrl: item.imageUrl || item.url || null
+               };
+               byId.set(id, true);
+               out.push(normalized);
+           });
+           return out;
+       }
+
+       function saveGeneratedMemes() {
+           const key = getGeneratedMemesKey();
+           if (!key) return;
+           try {
+               localStorage.setItem(key, JSON.stringify(dedupeMemes(generatedMemes)));
+           } catch (_err) {}
+       }
+
+       function restoreGeneratedMemes() {
+           const key = getGeneratedMemesKey();
+           if (!key) {
+               generatedMemes = [];
+               return;
+           }
+           try {
+               const raw = localStorage.getItem(key);
+               if (!raw) {
+                   generatedMemes = [];
+                   return;
+               }
+               generatedMemes = dedupeMemes(JSON.parse(raw));
+           } catch (_err) {
+               generatedMemes = [];
+           }
+       }
+
        function saveSwipeProgress() {
            if (!CURRENT_USER_ID || currentSearchTerm) return;
            const key = getSwipeProgressKey();
@@ -221,6 +271,19 @@
            }));
        }
 
+       function extractGeneratedCaptions(step4Data) {
+           if (Array.isArray(step4Data)) return step4Data;
+           if (!step4Data || typeof step4Data !== 'object') return [];
+           if (Array.isArray(step4Data.captions)) return step4Data.captions;
+           if (Array.isArray(step4Data.records)) return step4Data.records;
+           if (Array.isArray(step4Data.data)) return step4Data.data;
+           if (step4Data.data && Array.isArray(step4Data.data.captions)) return step4Data.data.captions;
+           if (step4Data.caption && typeof step4Data.caption === 'object') return [step4Data.caption];
+           if (step4Data.data && step4Data.data.caption && typeof step4Data.data.caption === 'object') return [step4Data.data.caption];
+           if (step4Data.content || step4Data.caption_text) return [step4Data];
+           return [];
+       }
+
        async function handleImageUpload(file) {
            if (!file) return;
            if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
@@ -293,11 +356,13 @@
                const step4Data = await step4Res.json();
                console.log('[Pipeline Step 4] Success', step4Data);
 
-               const generated = Array.isArray(step4Data) ? step4Data : (step4Data.captions || []);
+               const generated = extractGeneratedCaptions(step4Data);
+               console.log('[Pipeline Step 4] Captions extracted', { count: generated.length });
                const newCaptions = normalizeGeneratedCaptions(generated, cdnUrl);
                if (newCaptions.length) {
-                   allMemes = [...newCaptions, ...allMemes];
-                   generatedMemes = [...newCaptions, ...generatedMemes];
+                   generatedMemes = dedupeMemes([...newCaptions, ...generatedMemes]);
+                   saveGeneratedMemes();
+                   allMemes = dedupeMemes([...generatedMemes, ...allMemes]);
                    setUploadStatus(`Done. Added ${newCaptions.length} new caption(s).`);
                } else {
                    setUploadStatus('Upload complete, but no captions were returned.');
@@ -404,6 +469,10 @@
                ...item,
                imageUrl: imageMap[item.image_id] || null
            }));
+           allMemes = dedupeMemes(allMemes);
+
+           restoreGeneratedMemes();
+           allMemes = dedupeMemes([...generatedMemes, ...allMemes]);
 
            restoreSwipeProgress();
            updateSideTabs();
