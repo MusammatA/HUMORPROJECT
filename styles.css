@@ -315,6 +315,12 @@ body.has-sidebar {
    margin-bottom: 12px;
 }
 
+.swipe-controls {
+   display: flex;
+   justify-content: center;
+   margin-bottom: 12px;
+}
+
 .swipe-end-actions {
    display: flex;
    justify-content: center;
@@ -331,22 +337,11 @@ body.has-sidebar {
    box-shadow: 6px 6px 0 var(--text-main);
 }
 
-.swipe-zone {
-   position: absolute;
-   top: 0;
-   width: 50%;
-   height: 100%;
-   z-index: 5;
-   border: 0;
-   background: transparent;
-   cursor: pointer;
+.swipe-card .meme-image {
+   height: min(68vh, 720px);
+   object-fit: contain;
+   background: #111;
 }
-
-.swipe-zone.left { left: 0; }
-.swipe-zone.right { right: 0; }
-
-.swipe-zone.left:hover { background: rgba(244, 67, 54, 0.09); }
-.swipe-zone.right:hover { background: rgba(76, 175, 80, 0.09); }
 
 @media (max-width: 900px) {
    body.has-sidebar {

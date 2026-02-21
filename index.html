@@ -276,10 +276,13 @@
                    </button>
                </div>
                <div class="swipe-panel">
-                   <div class="swipe-hint">Click left side to dislike · right side to like</div>
-                   <div class="swipe-card" id="swipe-card-${item.id}">
-                       <button class="swipe-zone left" onclick="handleSwipeChoice(-1)" aria-label="Dislike"></button>
-                       <button class="swipe-zone right" onclick="handleSwipeChoice(1)" aria-label="Like"></button>
+                   <div class="swipe-hint">Tap left to dislike · tap right to like · swipe left/right works too</div>
+                   <div class="swipe-controls">
+                       <button class="logout-btn" onclick="rewindSwipe()">
+                           <i class="fa-solid fa-arrow-left"></i> Undo
+                       </button>
+                   </div>
+                   <div class="swipe-card" id="swipe-card-${item.id}" onclick="handleSwipeTap(event)">
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
                             onerror="this.onerror=null; this.src='${fallbackGif}';">
                        <div class="card-content">✨ ${item.content}</div>
@@ -291,6 +294,8 @@
                        </div>
                    </div>
                </div>`;
+
+           bindSwipeGestures(`swipe-card-${item.id}`);
        }
 
        function setupSearch(container) {
@@ -313,6 +318,30 @@
            await handleVote(currentMeme.id, voteValue, true);
            swipeIndex = swipeIndex + 1;
            renderCurrentView();
+       }
+
+       function handleSwipeTap(event) {
+           const card = event.currentTarget;
+           const rect = card.getBoundingClientRect();
+           const isRight = (event.clientX - rect.left) > (rect.width / 2);
+           handleSwipeChoice(isRight ? 1 : -1);
+       }
+
+       function bindSwipeGestures(cardId) {
+           const card = document.getElementById(cardId);
+           if (!card) return;
+           let startX = null;
+           card.addEventListener('touchstart', (e) => {
+               startX = e.changedTouches[0].clientX;
+           }, { passive: true });
+           card.addEventListener('touchend', (e) => {
+               if (startX == null) return;
+               const endX = e.changedTouches[0].clientX;
+               const deltaX = endX - startX;
+               startX = null;
+               if (Math.abs(deltaX) < 40) return;
+               handleSwipeChoice(deltaX > 0 ? 1 : -1);
+           }, { passive: true });
        }
 
        function rewindSwipe() {
