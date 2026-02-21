@@ -339,11 +339,11 @@ body.has-sidebar {
 }
 
 .swipe-card.choice-like {
-   box-shadow: 0 0 0 5px rgba(76, 175, 80, 0.85), 6px 6px 0 var(--text-main);
+   box-shadow: inset 0 0 0 9999px rgba(76, 175, 80, 0.26), 0 0 0 6px rgba(76, 175, 80, 0.95), 6px 6px 0 var(--text-main);
 }
 
 .swipe-card.choice-dislike {
-   box-shadow: 0 0 0 5px rgba(244, 67, 54, 0.85), 6px 6px 0 var(--text-main);
+   box-shadow: inset 0 0 0 9999px rgba(244, 67, 54, 0.28), 0 0 0 6px rgba(244, 67, 54, 0.95), 6px 6px 0 var(--text-main);
 }
 
 .swipe-card .meme-image {

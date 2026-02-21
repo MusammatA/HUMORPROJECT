@@ -316,10 +316,8 @@
            const currentMeme = memes[swipeIndex];
            swipeHistory.push(swipeIndex);
            showSwipeFeedback(voteValue);
-           await Promise.all([
-               handleVote(currentMeme.id, voteValue, true, true),
-               new Promise(resolve => setTimeout(resolve, 140))
-           ]);
+           handleVote(currentMeme.id, voteValue, true, true).catch(console.error);
+           await new Promise(resolve => setTimeout(resolve, 140));
            swipeIndex = swipeIndex + 1;
            renderCurrentView();
        }
