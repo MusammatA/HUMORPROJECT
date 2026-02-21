@@ -13,28 +13,32 @@
    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-
+   <aside class="sidebar" id="sidebar" style="display:none;">
+      <div class="sidebar-title">Views</div>
+      <button id="tab-grid" class="side-tab active" onclick="switchView('grid')">
+         <i class="fa-solid fa-table-cells-large"></i> Grid
+      </button>
+      <button id="tab-swipe" class="side-tab" onclick="switchView('swipe')">
+         <i class="fa-solid fa-hand-pointer"></i> Swipe
+      </button>
+   </aside>
 
    <div class="container">
        <h1>Brain Rot Central</h1>
        <p class="subtitle">Fresh from the Database</p>
 
-
        <div class="search-wrapper" style="display: none;">
            <input type="text" id="search-input" placeholder="🔍 Search for vibes, cats, or chaos...">
        </div>
-
 
        <div id="content-view">
            <p style="text-align: center;">Loading the vibes...</p>
        </div>
    </div>
 
-
    <div id="click-logger" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 100px; background: #222; color: #f0f0f0; font-family: monospace; font-size: 11px; overflow-y: scroll; padding: 10px; border-top: 2px solid #444; z-index: 9999; display: none;">
        <div id="log-content"></div>
    </div>
-
 
    <script>
        const SUPABASE_URL = 'https://secure.almostcrackd.ai'
@@ -44,7 +48,9 @@
        let allMemes = [];
        let voteStats = {};
        let CURRENT_USER_ID = null;
-
+       let currentView = 'grid';
+       let swipeIndex = 0;
+       let currentSearchTerm = '';
 
        function getClient() {
            if (!supabaseClient) {
@@ -53,17 +59,35 @@
            return supabaseClient;
        }
       
-       // Simple error logger (hidden unless error)
        function logMsg(msg, color = "#fff") {
            const box = document.getElementById('click-logger');
            const content = document.getElementById('log-content');
-           if (color === "red") box.style.display = 'block'; // Only show box on error
+           if (color === "red") box.style.display = 'block';
            const line = document.createElement('div');
            line.style.color = color;
            line.innerText = `> ${msg}`;
            content.prepend(line);
        }
 
+       function updateSideTabs() {
+           const gridBtn = document.getElementById('tab-grid');
+           const swipeBtn = document.getElementById('tab-swipe');
+           if (!gridBtn || !swipeBtn) return;
+           gridBtn.classList.toggle('active', currentView === 'grid');
+           swipeBtn.classList.toggle('active', currentView === 'swipe');
+       }
+
+       function getFilteredMemes() {
+           if (!currentSearchTerm) return allMemes;
+           return allMemes.filter(m => m.content && m.content.toLowerCase().includes(currentSearchTerm));
+       }
+
+       function switchView(view) {
+           currentView = view;
+           if (view === 'swipe') swipeIndex = 0;
+           updateSideTabs();
+           renderCurrentView();
+       }
 
        async function signIn() {
            const client = getClient();
@@ -76,6 +100,7 @@
        async function renderApp() {
            const container = document.getElementById('content-view');
            const searchBar = document.querySelector('.search-wrapper');
+           const sidebar = document.getElementById('sidebar');
            const client = getClient();
           
            const { data: { session } } = await client.auth.getSession();
@@ -83,10 +108,13 @@
            if (session) {
                CURRENT_USER_ID = session.user.id;
                searchBar.style.display = 'block';
+               sidebar.style.display = 'flex';
+               document.body.classList.add('has-sidebar');
                await fetchAndShowMemes(client, container);
            } else {
                searchBar.style.display = 'none';
-               // NEW LOGIN UI: No Emoji, Clean Button
+               sidebar.style.display = 'none';
+               document.body.classList.remove('has-sidebar');
                container.innerHTML = `
                    <div class="auth-box">
                        <h2>Login to see the memes</h2>
@@ -97,44 +125,33 @@
                    </div>`;
            }
 
-
-           client.auth.onAuthStateChange(async (event, currentSession) => {
+           client.auth.onAuthStateChange(async (_event, currentSession) => {
                if (currentSession) {
                    CURRENT_USER_ID = currentSession.user.id;
                    searchBar.style.display = 'block';
+                   sidebar.style.display = 'flex';
+                   document.body.classList.add('has-sidebar');
                    await fetchAndShowMemes(client, container);
                }
            });
        }
 
-
        async function fetchAndShowMemes(client, container) {
-           // 1. Fetch Captions
            const { data: captions, error } = await client.from('captions').select('*');
            if (error) { logMsg("Error captions: " + error.message, "red"); return; }
 
-
-           // 2. Fetch Images
            const imageIds = captions.map(c => c.image_id);
            const { data: images } = await client.from('images').select('id, url').in('id', imageIds);
            const imageMap = {};
            if (images) images.forEach(img => imageMap[img.id] = img.url);
 
-
-           // 3. Load Local Votes
            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
            const localKeys = Object.keys(localVotes);
 
-
-           // 4. Fetch Global Totals
            const { data: allVotes } = await client.from('caption_votes').select('*').limit(2000);
 
-
-           // 5. Calculate Stats
            voteStats = {};
 
-
-           // A. Add up DB votes
            if (allVotes) {
                allVotes.forEach(v => {
                    if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
@@ -144,8 +161,6 @@
                });
            }
 
-
-           // B. Add My Local Votes
            localKeys.forEach(captionId => {
                if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
                const myVal = Number(localVotes[captionId]);
@@ -153,25 +168,27 @@
                voteStats[captionId].total += myVal;
            });
 
-
-           // 6. Render
            allMemes = captions.map(item => ({
                ...item,
                imageUrl: imageMap[item.image_id] || null
            }));
 
-
-           renderGrid(allMemes, container);
-           setupSearch(allMemes, container);
+           updateSideTabs();
+           renderCurrentView(container);
+           setupSearch(container);
        }
 
+       function renderCurrentView(container = document.getElementById('content-view')) {
+           const memes = getFilteredMemes();
+           if (currentView === 'swipe') renderSwipe(memes, container);
+           else renderGrid(memes, container);
+       }
 
        function renderGrid(memes, container) {
            if (memes.length === 0) {
                container.innerHTML = `<p style="text-align:center;">No vibes found.</p>`;
                return;
            }
-
 
            let html = `
                <div style="text-align: right; margin-bottom: 20px;">
@@ -189,7 +206,6 @@
                const upActive = stats.myVote === 1 ? 'active up' : '';
                const downActive = stats.myVote === -1 ? 'active down' : '';
 
-
                html += `
                    <li id="card-${item.id}">
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
@@ -198,7 +214,6 @@
                        <div class="card-content">
                            ✨ ${item.content}
                        </div>
-
 
                        <div class="actions">
                            <div class="vote-controls">
@@ -219,61 +234,102 @@
            container.innerHTML = html + `</ul>`;
        }
 
+       function renderSwipe(memes, container) {
+           if (memes.length === 0) {
+               container.innerHTML = `<p style="text-align:center;">No vibes found.</p>`;
+               return;
+           }
 
-       function setupSearch(memes, container) {
+           if (swipeIndex >= memes.length) swipeIndex = 0;
+
+           const item = memes[swipeIndex];
+           const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
+           const displayUrl = item.imageUrl || fallbackGif;
+           const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+
+           container.innerHTML = `
+               <div style="text-align: right; margin-bottom: 20px;">
+                   <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                   </button>
+               </div>
+               <div class="swipe-panel">
+                   <div class="swipe-hint">Click left side to dislike · right side to like</div>
+                   <div class="swipe-card" id="swipe-card-${item.id}">
+                       <button class="swipe-zone left" onclick="handleSwipeChoice(-1)" aria-label="Dislike"></button>
+                       <button class="swipe-zone right" onclick="handleSwipeChoice(1)" aria-label="Like"></button>
+                       <img src="${displayUrl}" class="meme-image" alt="Meme"
+                            onerror="this.onerror=null; this.src='${fallbackGif}';">
+                       <div class="card-content">✨ ${item.content}</div>
+                       <div class="actions">
+                           <div class="vote-controls">
+                               <span class="vote-count">${stats.total}</span>
+                           </div>
+                           <small style="color:#aaa;">${swipeIndex + 1} / ${memes.length}</small>
+                       </div>
+                   </div>
+               </div>`;
+       }
+
+       function setupSearch(container) {
            const searchInput = document.getElementById('search-input');
            const newSearch = searchInput.cloneNode(true);
            searchInput.parentNode.replaceChild(newSearch, searchInput);
            newSearch.addEventListener('input', (e) => {
-               const term = e.target.value.toLowerCase();
-               const filtered = memes.filter(m => m.content && m.content.toLowerCase().includes(term));
-               renderGrid(filtered, container);
+               currentSearchTerm = e.target.value.toLowerCase();
+               swipeIndex = 0;
+               renderCurrentView(container);
            });
        }
 
+       async function handleSwipeChoice(voteValue) {
+           const memes = getFilteredMemes();
+           if (!memes.length) return;
+           const currentMeme = memes[swipeIndex];
+           await handleVote(currentMeme.id, voteValue, true);
+           swipeIndex = (swipeIndex + 1) % memes.length;
+           renderCurrentView();
+       }
 
-       // --- HANDLER ---
-       async function handleVote(captionId, newValue) {
+       async function handleVote(captionId, newValue, suppressGridUI = false) {
            if (!CURRENT_USER_ID) { alert("Login first!"); return; }
-
 
            try {
                const client = getClient();
                const now = new Date().toISOString();
               
-               const countSpan = document.getElementById(`count-${captionId}`);
-               let currentTotal = parseInt(countSpan.innerText) || 0;
-              
                if (!voteStats[captionId]) voteStats[captionId] = { total: 0, myVote: 0 };
                const currentVoteValue = voteStats[captionId].myVote;
 
+               const countSpan = document.getElementById(`count-${captionId}`);
+               let currentTotal = countSpan ? (parseInt(countSpan.innerText) || 0) : voteStats[captionId].total;
 
                let nextVoteValue = 0;
               
                if (currentVoteValue === newValue) {
-                   updateUIColors(captionId, 0);
-                   countSpan.innerText = currentTotal - newValue;
+                   if (!suppressGridUI) updateUIColors(captionId, 0);
+                   currentTotal = currentTotal - newValue;
                    nextVoteValue = 0;
                } else if (currentVoteValue === 0) {
-                   updateUIColors(captionId, newValue);
-                   countSpan.innerText = currentTotal + newValue;
+                   if (!suppressGridUI) updateUIColors(captionId, newValue);
+                   currentTotal = currentTotal + newValue;
                    nextVoteValue = newValue;
                } else {
-                   updateUIColors(captionId, newValue);
-                   countSpan.innerText = currentTotal + (newValue * 2);
+                   if (!suppressGridUI) updateUIColors(captionId, newValue);
+                   currentTotal = currentTotal + (newValue * 2);
                    nextVoteValue = newValue;
                }
 
+               if (countSpan) countSpan.innerText = currentTotal;
 
-               // Update Local Storage
                const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
                if (nextVoteValue === 0) delete localVotes[captionId];
                else localVotes[captionId] = nextVoteValue;
                localStorage.setItem('my_votes_v1', JSON.stringify(localVotes));
+
                voteStats[captionId].myVote = nextVoteValue;
+               voteStats[captionId].total = currentTotal;
 
-
-               // Update DB
                const { error: upsertError } = await client.from('caption_votes').upsert({
                    profile_id: CURRENT_USER_ID,
                    caption_id: captionId,
@@ -281,7 +337,6 @@
                    created_datetime_utc: now,
                    modified_datetime_utc: now
                }, { onConflict: 'profile_id,caption_id' });
-
 
                if (upsertError) {
                    await client.from('caption_votes').insert({
@@ -292,12 +347,10 @@
                    });
                }
 
-
            } catch (err) {
                console.error(err);
            }
        }
-
 
        function updateUIColors(captionId, value) {
            const card = document.getElementById(`card-${captionId}`);
@@ -308,11 +361,9 @@
            if (upBtn) upBtn.classList.remove('active', 'up');
            if (downBtn) downBtn.classList.remove('active', 'down');
 
-
            if (value === 1 && upBtn) upBtn.classList.add('active', 'up');
            if (value === -1 && downBtn) downBtn.classList.add('active', 'down');
        }
-
 
        renderApp()
    </script>
