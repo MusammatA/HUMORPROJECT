@@ -14,28 +14,28 @@
 </head>
 <body>
    <aside class="sidebar" id="sidebar" style="display:none;">
-      <div class="sidebar-title">Views</div>
+      <div class="sidebar-title">Modes</div>
       <button id="tab-grid" class="side-tab active" onclick="switchView('grid')">
-         <i class="fa-solid fa-table-cells-large"></i> Grid
+         <i class="fa-solid fa-table-cells-large"></i> Gallery
       </button>
       <button id="tab-swipe" class="side-tab" onclick="switchView('swipe')">
-         <i class="fa-solid fa-hand-pointer"></i> Swipe
+         <i class="fa-solid fa-hand-pointer"></i> Quick Vote
       </button>
       <button id="tab-upload" class="side-tab" onclick="switchView('upload')">
-         <i class="fa-solid fa-upload"></i> Upload
+         <i class="fa-solid fa-upload"></i> Create
       </button>
    </aside>
 
    <div class="container">
        <h1>Brain Rot Central</h1>
-       <p class="subtitle">Fresh from the Database</p>
+       <p class="subtitle">Caption chaos, professionally organized.</p>
 
        <div class="search-wrapper" style="display: none;">
-           <input type="text" id="search-input" placeholder="Search captions...">
+           <input type="text" id="search-input" placeholder="Find a caption worth stealing...">
        </div>
 
        <div id="content-view">
-           <p style="text-align: center;">Loading the vibes...</p>
+           <p style="text-align: center;">Warming up the meme engine...</p>
        </div>
    </div>
 
@@ -334,15 +334,15 @@
        async function handleImageUpload(file) {
            if (!file) return;
            if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-               setUploadStatus(`Unsupported file type: ${file.type || 'unknown'}`, true);
+               setUploadStatus(`That file type is not supported: ${file.type || 'unknown'}`, true);
                return;
            }
 
            try {
-               setUploadStatus('Preparing upload...');
+               setUploadStatus('Packing your image...');
                console.log('[Pipeline] Starting upload', { name: file.name, type: file.type, size: file.size });
                const token = await getAccessToken();
-               setUploadStatus('Calling Step 1...');
+               setUploadStatus('Requesting an upload lane...');
 
                console.log('[Pipeline Step 1] Generate presigned URL', { contentType: file.type });
                const step1Res = await fetchWithTimeout(`${PIPELINE_BASE_URL}/pipeline/generate-presigned-url`, {
@@ -359,7 +359,7 @@
                const cdnUrl = step1Data.cdnUrl;
                console.log('[Pipeline Step 1] Success', { presignedUrl, cdnUrl });
 
-               setUploadStatus('Uploading image bytes...');
+               setUploadStatus('Uploading pixels...');
                console.log('[Pipeline Step 2] Upload bytes to presigned URL');
                const step2Res = await fetchWithTimeout(presignedUrl, {
                    method: 'PUT',
@@ -371,7 +371,7 @@
                if (!step2Res.ok) throw new Error(`Step 2 failed: ${step2Res.status}`);
                console.log('[Pipeline Step 2] Success');
 
-               setUploadStatus('Registering image...');
+               setUploadStatus('Registering your upload...');
                console.log('[Pipeline Step 3] Register image URL', { imageUrl: cdnUrl });
                const step3Res = await fetchWithTimeout(`${PIPELINE_BASE_URL}/pipeline/upload-image-from-url`, {
                    method: 'POST',
@@ -389,7 +389,7 @@
                const imageId = step3Data.imageId;
                console.log('[Pipeline Step 3] Success', { imageId });
 
-               setUploadStatus('Generating captions...');
+               setUploadStatus('Generating caption options...');
                console.log('[Pipeline Step 4] Generate captions', { imageId });
                const step4Res = await fetchWithTimeout(`${PIPELINE_BASE_URL}/pipeline/generate-captions`, {
                    method: 'POST',
@@ -410,9 +410,9 @@
                    generatedMemes = dedupeMemes([...newCaptions, ...generatedMemes]);
                    saveGeneratedMemes();
                    allMemes = dedupeMemes([...generatedMemes, ...allMemes]);
-                   setUploadStatus(`Done. Added ${newCaptions.length} new caption(s).`);
+                   setUploadStatus(`New batch ready: ${newCaptions.length} caption(s).`);
                } else {
-                   setUploadStatus('Upload complete, but no captions were returned.');
+                   setUploadStatus('Upload succeeded, but no captions were returned.');
                }
                swipeIndex = 0;
                swipeHistory = [];
@@ -460,13 +460,13 @@
                document.body.classList.remove('has-sidebar');
                container.innerHTML = `
                    <div class="auth-box">
-                       <div class="auth-kicker">WELCOME</div>
+                       <div class="auth-kicker">SIGN IN</div>
                        <h2>Brain Rot Central</h2>
-                       <p class="auth-subtext">Sign in with Google to access voting and swipe mode.</p>
+                       <p class="auth-subtext">Sign in with Google to vote, swipe, and generate new captions.</p>
                        <button class="login-btn" onclick="signIn()">
-                           <i class="fa-brands fa-google"></i> Continue with Google
+                           <i class="fa-brands fa-google"></i> Sign in with Google
                        </button>
-                       <div class="auth-meta">Redirect: /auth/callback</div>
+                       <div class="auth-meta">Callback route: /auth/callback</div>
                    </div>`;
            }
 
@@ -549,12 +549,12 @@
            let html = `
                <div style="text-align: right; margin-bottom: 20px;">
                    <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
                    </button>
                </div>
                <section class="upload-view-panel">
                    <div class="upload-wrapper">
-                       <label class="upload-label" for="image-upload">Upload Image</label>
+                       <label class="upload-label" for="image-upload">Upload a New Image</label>
                        <input
                            type="file"
                            id="image-upload"
@@ -564,10 +564,10 @@
                    </div>
                </section>
                <section class="upload-results">
-                   <h3 class="upload-results-title">Generated Memes (${generatedCount})</h3>`;
+                   <h3 class="upload-results-title">Generated Captions (${generatedCount})</h3>`;
 
            if (!generatedCount) {
-               html += `<p class="upload-empty">Upload an image to generate captions. New results will show here.</p>`;
+               html += `<p class="upload-empty">Upload an image and fresh caption options will appear here.</p>`;
            } else {
                html += '<ul>';
                generatedMemes.forEach(item => {
@@ -608,14 +608,14 @@
 
        function renderGrid(memes, container) {
            if (memes.length === 0) {
-               container.innerHTML = `<p style="text-align:center;">No vibes found.</p>`;
+               container.innerHTML = `<p style="text-align:center;">No captions match your current filter.</p>`;
                return;
            }
 
            let html = `
                <div style="text-align: right; margin-bottom: 20px;">
                    <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
                    </button>
                </div>
                <ul>`;
@@ -657,7 +657,7 @@
 
        function renderSwipe(memes, container) {
            if (memes.length === 0) {
-               container.innerHTML = `<p style="text-align:center;">No vibes found.</p>`;
+               container.innerHTML = `<p style="text-align:center;">No captions match your current filter.</p>`;
                return;
            }
 
@@ -666,17 +666,17 @@
                container.innerHTML = `
                    <div style="text-align: right; margin-bottom: 20px;">
                        <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                           <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                           <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
                        </button>
                    </div>
                    <div class="swipe-panel">
-                       <div class="swipe-hint">You reached the end of this swipe deck.</div>
+                       <div class="swipe-hint">Deck complete. You rated this whole set.</div>
                        <div class="swipe-end-actions">
                            <button class="logout-btn" onclick="rewindSwipe()">
-                               <i class="fa-solid fa-arrow-left"></i> Rewind Last
+                               <i class="fa-solid fa-arrow-left"></i> Undo Last Vote
                            </button>
                            <button class="logout-btn" onclick="restartSwipeDeck()">
-                               <i class="fa-solid fa-rotate-left"></i> Restart Deck
+                               <i class="fa-solid fa-rotate-left"></i> Start Over
                            </button>
                        </div>
                    </div>`;
@@ -691,14 +691,14 @@
            container.innerHTML = `
                <div style="text-align: right; margin-bottom: 20px;">
                    <button class="logout-btn" onclick="getClient().auth.signOut().then(() => location.reload())">
-                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Logout
+                       <i class="fa-solid fa-arrow-right-from-bracket"></i> Log out
                    </button>
                </div>
                <div class="swipe-panel">
-                   <div class="swipe-hint">Tap left to dislike · tap right to like · swipe left/right works too</div>
+                   <div class="swipe-hint">Left = pass · Right = approve · Swipe also works</div>
                    <div class="swipe-controls">
                        <button class="logout-btn" onclick="rewindSwipe()">
-                           <i class="fa-solid fa-arrow-left"></i> Undo
+                           <i class="fa-solid fa-arrow-left"></i> Undo Vote
                        </button>
                    </div>
                    <div class="swipe-card" id="swipe-card-${item.id}">
@@ -799,7 +799,7 @@
        }
 
        async function handleVote(captionId, newValue, suppressGridUI = false, forceSet = false) {
-           if (!CURRENT_USER_ID) { alert("Login first!"); return; }
+           if (!CURRENT_USER_ID) { alert("Please sign in first."); return; }
 
            try {
                const client = getClient();
