@@ -233,25 +233,80 @@ li:hover {
     text-align: center;
 }
 
-/* Tab Styling */
+/* Navigation Tabs */
+.tabs {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
 .tab-btn {
     background: white;
-    border: 3px solid #2D2424;
-    padding: 8px 15px;
-    border-radius: 20px;
-    cursor: pointer;
+    border: 3px solid var(--text-main);
+    padding: 8px 18px;
+    border-radius: 50px;
+    font-family: 'Quicksand', sans-serif;
     font-weight: bold;
-    box-shadow: 4px 4px 0px #2D2424;
+    cursor: pointer;
+    box-shadow: 4px 4px 0px var(--text-main);
 }
-.tab-btn.active { background: #D4E09B; }
 
-/* Swipe Card Styling */
-.swipe-card {
+.tab-btn.active {
+    background: var(--accent-green);
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0px var(--text-main);
+}
+
+/* Swipe Stack Layout */
+#swipe-container {
     max-width: 400px;
     margin: 0 auto;
+    position: relative;
+    height: 650px;
+}
+
+.swipe-card {
     background: white;
-    border: 3px solid #2D2424;
+    border: 3px solid var(--text-main);
     border-radius: 20px;
-    box-shadow: 8px 8px 0px #2D2424;
-    touch-action: none;
+    box-shadow: 8px 8px 0px var(--text-main);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+.click-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 50%;
+    z-index: 100;
+    cursor: pointer;
+}
+.click-left { left: 0; }
+.click-right { right: 0; }
+
+.grid-list { 
+    display: grid; 
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); 
+    gap: 20px; 
+    list-style: none; 
+    padding: 0; 
+}
+
+.comment-area {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background: #fdfdfd;
+    font-size: 0.9rem;
+}
+
+#content-view p {
+    font-family: 'Quicksand', sans-serif;
+    font-weight: 700;
+    color: var(--text-main);
 }
