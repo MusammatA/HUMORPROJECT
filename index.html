@@ -17,6 +17,12 @@
       if (el) el.textContent = msg;
     };
 
+    window.addEventListener('error', function(e) {
+      if (e && e.filename && e.filename.includes('app.js')) {
+        window.__showBootError('app.js runtime/parse error: ' + (e.message || 'Unknown error'));
+      }
+    });
+
     window.addEventListener('DOMContentLoaded', function() {
       setTimeout(function() {
         if (window.__appLoadError) {
@@ -24,12 +30,12 @@
           return;
         }
         if (!window.__appBooted) {
-          window.__showBootError('App script did not start. Check browser console errors.');
+          window.__showBootError('App script did not start. Open /app.js directly and verify it is JavaScript, not HTML.');
         }
       }, 3500);
     });
   </script>
-  <script defer src="app.js" onerror="window.__appLoadError=true"></script>
+  <script defer src="/app.js?v=20260221b" onerror="window.__appLoadError=true"></script>
 </head>
 <body>
   <div class="container">
