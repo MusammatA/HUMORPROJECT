@@ -2,9 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Brain Rot Central</title>
-    
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600&family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
@@ -12,19 +11,21 @@
     <link rel="stylesheet" href="styles.css"> 
 </head>
 <body>
-
     <div class="container">
         <h1>Brain Rot Central</h1>
         <p class="subtitle">Fresh from the Database</p>
 
-        <div id="content-view">
-            <p style="text-align: center; padding-top: 50px;" id="loading-text">Initializing the Rot...</p>
+        <div class="tabs" id="nav-tabs" style="display: none; justify-content: center; gap: 15px; margin-bottom: 20px;">
+            <button class="tab-btn active" onclick="switchView('grid')">📜 Grid View</button>
+            <button class="tab-btn" onclick="switchView('swipe')">🃏 Swipe View</button>
         </div>
 
-        <div class="controls" id="controls" style="display:none;">
-            <button class="control-btn" style="color:#888" onclick="undo()"><i class="fa-solid fa-rotate-left"></i></button>
-            <button class="control-btn" style="color:#FF8BA7" onclick="swipeLeft()"><i class="fa-solid fa-xmark"></i></button>
-            <button class="control-btn" style="color:#4CAF50" onclick="swipeRight()"><i class="fa-solid fa-heart"></i></button>
+        <div class="search-wrapper" style="display: none;">
+            <input type="text" id="search-input" placeholder="🔍 Search for vibes...">
+        </div>
+
+        <div id="content-view">
+            <p style="text-align: center;">Initializing...</p>
         </div>
     </div>
 
@@ -33,139 +34,105 @@
         const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        let memes = [];
-        let history = [];
-        let currentIndex = 0;
+        let allMemes = [];
+        let voteStats = {};
+        let currentView = 'grid';
+        let swipeIndex = 0;
         let userId = null;
 
-        // 1. Initial Start
-        async function start() {
-            console.log("Checking Auth...");
-            const { data: { session }, error: authError } = await supabase.auth.getSession();
-            
-            if (authError) {
-                console.error("Auth Error:", authError);
-                return;
-            }
-
+        async function init() {
+            const { data: { session } } = await supabase.auth.getSession();
             if (!session) {
-                console.log("No Session Found - Showing Login");
-                document.getElementById('content-view').innerHTML = `
-                    <div class="auth-box">
-                        <h2>Login to see the memes</h2>
-                        <button class="login-btn" onclick="login()">Login with Google</button>
-                    </div>`;
+                renderLogin();
                 return;
             }
-
             userId = session.user.id;
-            console.log("User Logged In:", userId);
-            document.getElementById('controls').style.display = 'flex';
+            document.getElementById('nav-tabs').style.display = 'flex';
+            document.querySelector('.search-wrapper').style.display = 'block';
             await loadData();
         }
 
-        // 2. Fetch Data
         async function loadData() {
-            const loadingText = document.getElementById('loading-text');
-            if(loadingText) loadingText.innerText = "Fetching Memes...";
+            const [capRes, imgRes, voteRes] = await Promise.all([
+                supabase.from('captions').select('*'),
+                supabase.from('images').select('id, url'),
+                supabase.from('caption_votes').select('*')
+            ]);
 
-            console.log("Fetching Captions and Images...");
-            const { data: captions, error: capErr } = await supabase.from('captions').select('*');
-            const { data: images, error: imgErr } = await supabase.from('images').select('id, url');
+            const imageMap = Object.fromEntries(imgRes.data.map(i => [i.id, i.url]));
+            const localVotes = JSON.parse(localStorage.getItem('my_votes_v1') || '{}');
 
-            if (capErr || imgErr) {
-                console.error("Data Fetch Error:", capErr || imgErr);
-                return;
-            }
+            voteStats = {};
+            voteRes.data.forEach(v => {
+                if (!voteStats[v.caption_id]) voteStats[v.caption_id] = { total: 0, myVote: 0 };
+                if (v.profile_id !== userId) voteStats[v.caption_id].total += parseInt(v.vote_value);
+            });
 
-            const imageMap = Object.fromEntries(images.map(i => [i.id, i.url]));
-            memes = captions.map(c => ({ ...c, url: imageMap[c.image_id] }));
-            
-            console.log("Total Memes Loaded:", memes.length);
+            Object.keys(localVotes).forEach(id => {
+                if (!voteStats[id]) voteStats[id] = { total: 0, myVote: 0 };
+                voteStats[id].myVote = Number(localVotes[id]);
+                voteStats[id].total += voteStats[id].myVote;
+            });
+
+            allMemes = capRes.data.map(c => ({ ...c, url: imageMap[c.image_id] }));
             render();
         }
 
-        // 3. Display Card
+        function switchView(view) {
+            currentView = view;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            render();
+        }
+
         function render() {
-            const view = document.getElementById('content-view');
-            if (currentIndex >= memes.length) {
-                view.innerHTML = "<div class='card-text' style='text-align:center;'>End of the deck. 🔚</div>";
+            const container = document.getElementById('content-view');
+            if (currentView === 'grid') renderGrid(container);
+            else renderSwipe(container);
+        }
+
+        function renderGrid(container) {
+            let html = `<ul class="grid-layout">`;
+            allMemes.forEach(item => {
+                const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+                html += `<li>
+                    <img src="${item.url}" class="meme-image">
+                    <div class="card-content">✨ ${item.content}</div>
+                    <div class="actions"><span class="vote-count">${stats.total}</span></div>
+                </li>`;
+            });
+            container.innerHTML = html + `</ul>`;
+        }
+
+        function renderSwipe(container) {
+            if (swipeIndex >= allMemes.length) {
+                container.innerHTML = `<p style="text-align:center;">End of the deck. 🔚</p>`;
                 return;
             }
-
-            const item = memes[currentIndex];
-            const comments = JSON.parse(localStorage.getItem(`c_${item.id}`) || '[]');
-            
-            console.log("Rendering Card:", item.id);
-
-            const card = document.createElement('div');
-            card.className = 'meme-card';
-            card.innerHTML = `
-                <img src="${item.url}" class="meme-image" draggable="false" onerror="this.src='https://media.giphy.com/media/26hkhKd9CQeRv7lqM/giphy.gif'">
-                <div class="card-text">${item.content}</div>
-                <div class="stat-bar">
-                    <span><i class="fa-solid fa-arrow-up"></i> ${item.votes || 0}</span>
-                    <span><i class="fa-solid fa-comment"></i> ${comments.length}</span>
-                </div>
-                <div class="comment-area">
-                    ${comments.map(c => `<div style="border-bottom:1px solid #eee; padding:4px;">匿名: ${c}</div>`).join('')}
-                </div>
-                <div style="padding:10px; border-top:2px solid #2D2424;">
-                    <input type="text" placeholder="Add anonymous comment..." 
-                           style="width:100%; border:2px solid #2D2424; border-radius:20px; padding:5px 15px;"
-                           onkeydown="if(event.key==='Enter') addComment('${item.id}', this)">
+            const item = allMemes[swipeIndex];
+            container.innerHTML = `
+                <div id="swipe-card" class="swipe-card">
+                    <img src="${item.url}" class="meme-image">
+                    <div class="card-content">✨ ${item.content}</div>
                 </div>`;
-
-            view.innerHTML = "";
-            view.appendChild(card);
-
-            // Init Hammer Swiping
-            const h = new Hammer(card);
-            h.on('pan', e => card.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX/20}deg)`);
-            h.on('panend', e => {
-                if (e.deltaX > 150) swipeRight();
-                else if (e.deltaX < -150) swipeLeft();
-                else card.style.transform = '';
-            });
-        }
-
-        async function handleVote(v) {
-            const item = memes[currentIndex];
-            history.push({ index: currentIndex, id: item.id, v: v });
             
-            await supabase.from('caption_votes').upsert({ 
-                profile_id: userId, 
-                caption_id: item.id, 
-                vote_value: v, 
-                created_datetime_utc: new Date().toISOString() 
+            const mc = new Hammer(document.getElementById('swipe-card'));
+            mc.on("pan", e => {
+                e.target.style.transform = `translateX(${e.deltaX}px) rotate(${e.deltaX/20}deg)`;
             });
-
-            currentIndex++;
-            render();
+            mc.on("panend", e => {
+                if (Math.abs(e.deltaX) > 150) {
+                    swipeIndex++;
+                    render();
+                } else e.target.style.transform = '';
+            });
         }
 
-        function swipeRight() { handleVote(1); }
-        function swipeLeft() { handleVote(-1); }
-        function undo() { if (history.length) { currentIndex = history.pop().index; render(); } }
-        
-        function addComment(id, input) {
-            if(!input.value.trim()) return;
-            const c = JSON.parse(localStorage.getItem(`c_${id}`) || '[]');
-            c.push(input.value);
-            localStorage.setItem(`c_${id}`, JSON.stringify(c));
-            input.value = "";
-            render();
+        function renderLogin() {
+            document.getElementById('content-view').innerHTML = `<div class="auth-box"><button class="login-btn" onclick="supabase.auth.signInWithOAuth({provider:'google'})">Login</button></div>`;
         }
 
-        function login() { 
-            supabase.auth.signInWithOAuth({ 
-                provider: 'google', 
-                options: { redirectTo: window.location.origin + '/auth/callback' } 
-            }); 
-        }
-
-        // Start everything
-        start();
+        init();
     </script>
 </body>
 </html>

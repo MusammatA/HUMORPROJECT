@@ -233,64 +233,25 @@ li:hover {
     text-align: center;
 }
 
-/* Navigation Tabs */
-.tabs {
-    display: flex;
-    justify-content: center;
-    gap: 20px;
-    margin-bottom: 20px;
-}
-
+/* Tab Styling */
 .tab-btn {
     background: white;
-    border: 2px solid var(--text-main);
-    padding: 10px 20px;
+    border: 3px solid #2D2424;
+    padding: 8px 15px;
     border-radius: 20px;
-    font-family: 'Quicksand', sans-serif;
-    font-weight: 700;
     cursor: pointer;
-    box-shadow: 4px 4px 0px var(--text-main);
-    transition: 0.2s;
+    font-weight: bold;
+    box-shadow: 4px 4px 0px #2D2424;
 }
+.tab-btn.active { background: #D4E09B; }
 
-.tab-btn.active {
-    background: var(--accent-green);
-    transform: translate(2px, 2px);
-    box-shadow: 2px 2px 0px var(--text-main);
-}
-
-/* Swipe View Specifics */
-#swipe-container {
-    max-width: 450px;
-    margin: 0 auto;
-    position: relative;
-    height: 600px;
-}
-
+/* Swipe Card Styling */
 .swipe-card {
-    position: absolute;
-    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
     background: white;
-    border: 3px solid var(--text-main);
+    border: 3px solid #2D2424;
     border-radius: 20px;
-    box-shadow: 8px 8px 0px var(--text-main);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Transparent Click Zones */
-.click-zone {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 50%;
-    z-index: 20;
-    cursor: pointer;
-}
-.click-left { left: 0; }
-.click-right { right: 0; }
-
-.click-zone:active {
-    background: rgba(0,0,0,0.05);
+    box-shadow: 8px 8px 0px #2D2424;
+    touch-action: none;
 }
