@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Popular Memes Bubble Chart</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #475569;
+      --accent: #f97316;
+      --accent-2: #0ea5e9;
+      --border: #dbe3ee;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", Tahoma, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% 20%, #ffd9b8 0%, transparent 33%),
+        radial-gradient(circle at 85% 10%, #c5ecff 0%, transparent 30%),
+        var(--bg);
+      min-height: 100vh;
+      padding: 28px 18px 40px;
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.5rem, 2.2vw, 2.4rem);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    p { margin: 0; color: var(--muted); }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      align-items: end;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.84rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-weight: 700;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: #f8fbff;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--ink);
+      font-size: 0.96rem;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      background: linear-gradient(130deg, var(--accent), #fb7185);
+      color: #fff;
+      cursor: pointer;
+      min-height: 43px;
+      transition: transform 120ms ease;
+    }
+
+    button:hover { transform: translateY(-1px); }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      background: linear-gradient(180deg, #ffffff, #f8fbff);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .metric .k {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+    }
+
+    .metric .v {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0b1324;
+      overflow-wrap: anywhere;
+    }
+
+    .status {
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+
+    .status.error {
+      color: #b91c1c;
+      font-weight: 700;
+    }
+
+    .chart-wrap {
+      position: relative;
+      min-height: 450px;
+    }
+
+    @media (max-width: 700px) {
+      .chart-wrap { min-height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="panel">
+      <h1>Most Popular Memes</h1>
+      <p>Bubble size uses a weighted popularity score, X-axis is views, and Y-axis is likes/upvotes.</p>
+    </section>
+
+    <section class="panel controls" aria-label="Data controls">
+      <label>
+        Table name
+        <input id="tableName" value="memes" />
+      </label>
+      <label>
+        Title column
+        <input id="titleColumn" value="title" />
+      </label>
+      <label>
+        Max rows
+        <input id="maxRows" type="number" min="10" max="1000" value="300" />
+      </label>
+      <button id="loadBtn">Load From Supabase</button>
+    </section>
+
+    <section class="panel summary" aria-label="Summary metrics">
+      <article class="metric"><div class="k">Rows Loaded</div><div class="v" id="rowsLoaded">-</div></article>
+      <article class="metric"><div class="k">Top Meme</div><div class="v" id="topMeme">-</div></article>
+      <article class="metric"><div class="k">Avg Popularity</div><div class="v" id="avgPopularity">-</div></article>
+      <article class="metric"><div class="k">Data Source</div><div class="v" id="dataSource">-</div></article>
+    </section>
+
+    <section class="panel">
+      <div id="status" class="status">Ready.</div>
+      <div class="chart-wrap">
+        <canvas id="bubbleChart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const SUPABASE_PROJECT_ID = "qihsgnfjqmkjmoowyfbn";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ";
+
+    const endpoint = `https://${SUPABASE_PROJECT_ID}.supabase.co/rest/v1`;
+
+    const candidates = {
+      likes: ["likes", "upvotes", "like_count", "likes_count", "score", "favorites"],
+      views: ["views", "view_count", "impressions", "reach", "plays"],
+      shares: ["shares", "share_count", "reposts", "retweets"],
+      comments: ["comments", "comment_count", "replies"]
+    };
+
+    const els = {
+      tableName: document.getElementById("tableName"),
+      titleColumn: document.getElementById("titleColumn"),
+      maxRows: document.getElementById("maxRows"),
+      loadBtn: document.getElementById("loadBtn"),
+      status: document.getElementById("status"),
+      rowsLoaded: document.getElementById("rowsLoaded"),
+      topMeme: document.getElementById("topMeme"),
+      avgPopularity: document.getElementById("avgPopularity"),
+      dataSource: document.getElementById("dataSource")
+    };
+
+    const ctx = document.getElementById("bubbleChart").getContext("2d");
+    const bubbleChart = new Chart(ctx, {
+      type: "bubble",
+      data: { datasets: [{ label: "Meme Popularity", data: [], backgroundColor: "rgba(14, 165, 233, 0.55)", borderColor: "rgba(2, 132, 199, 1)", borderWidth: 1.4 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: true, labels: { font: { size: 13 } } },
+          tooltip: {
+            callbacks: {
+              label(context) {
+                const raw = context.raw?.meta || {};
+                return `${raw.label || "Untitled"} | score: ${Math.round(raw.score || 0)}, likes: ${raw.likes || 0}, views: ${raw.views || 0}, shares: ${raw.shares || 0}`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: "Views" }, grid: { color: "rgba(148, 163, 184, 0.2)" } },
+          y: { title: { display: true, text: "Likes / Upvotes" }, grid: { color: "rgba(148, 163, 184, 0.2)" } }
+        }
+      }
+    });
+
+    function updateStatus(message, isError = false) {
+      els.status.textContent = message;
+      els.status.classList.toggle("error", isError);
+    }
+
+    function readMetric(row, list) {
+      for (const key of list) {
+        const value = row[key];
+        const num = Number(value);
+        if (!Number.isNaN(num) && Number.isFinite(num)) {
+          return Math.max(0, num);
+        }
+      }
+      return 0;
+    }
+
+    function getTitle(row, titleColumn) {
+      return row[titleColumn] || row.title || row.name || row.caption || row.meme_name || `Meme #${row.id ?? "?"}`;
+    }
+
+    function toBubble(row, titleColumn) {
+      const likes = readMetric(row, candidates.likes);
+      const views = readMetric(row, candidates.views);
+      const shares = readMetric(row, candidates.shares);
+      const comments = readMetric(row, candidates.comments);
+      const score = likes * 4 + shares * 6 + comments * 3 + views * 0.03;
+
+      return {
+        x: views,
+        y: likes,
+        r: 6,
+        meta: {
+          label: getTitle(row, titleColumn),
+          likes,
+          views,
+          shares,
+          comments,
+          score,
+          raw: row
+        }
+      };
+    }
+
+    function render(dataset, sourceTable) {
+      const top = dataset
+        .sort((a, b) => b.meta.score - a.meta.score)
+        .slice(0, 30)
+        .map((point, i, arr) => {
+          const maxScore = arr[0]?.meta.score || 1;
+          point.r = 7 + (point.meta.score / maxScore) * 18;
+          return point;
+        });
+
+      bubbleChart.data.datasets[0].data = top;
+      bubbleChart.update();
+
+      const avg = top.length ? top.reduce((sum, p) => sum + p.meta.score, 0) / top.length : 0;
+
+      els.rowsLoaded.textContent = String(dataset.length);
+      els.topMeme.textContent = top[0]?.meta.label || "None";
+      els.avgPopularity.textContent = avg.toFixed(1);
+      els.dataSource.textContent = sourceTable;
+
+      updateStatus(`Loaded ${dataset.length} rows and plotted top ${top.length} memes.`);
+    }
+
+    async function loadData() {
+      const table = els.tableName.value.trim();
+      const titleColumn = els.titleColumn.value.trim() || "title";
+      const maxRows = Math.min(1000, Math.max(10, Number(els.maxRows.value) || 300));
+
+      if (!table) {
+        updateStatus("Enter a table name.", true);
+        return;
+      }
+
+      updateStatus(`Fetching data from '${table}'...`);
+
+      const url = `${endpoint}/${encodeURIComponent(table)}?select=*&limit=${maxRows}`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Supabase request failed (${response.status}): ${text.slice(0, 220)}`);
+        }
+
+        const rows = await response.json();
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new Error("No rows returned. Check table permissions or table name.");
+        }
+
+        const bubbles = rows.map(row => toBubble(row, titleColumn));
+        render(bubbles, table);
+      } catch (error) {
+        updateStatus(error.message, true);
+      }
+    }
+
+    els.loadBtn.addEventListener("click", loadData);
+    loadData();
+  </script>
+</body>
+</html>
