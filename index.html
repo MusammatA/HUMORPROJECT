@@ -794,14 +794,40 @@
 
        function isOwnedByCurrentUser(item) {
            if (!item) return false;
-           if (item.uploaderEmail && CURRENT_USER_EMAIL && item.uploaderEmail === CURRENT_USER_EMAIL) return true;
-           if (item.imageUrl && CURRENT_USER_ID) return String(item.imageUrl).includes(`/${CURRENT_USER_ID}/`);
+           const currentEmail = String(CURRENT_USER_EMAIL || '').trim().toLowerCase();
+           const itemEmail = String(
+               item.uploaderEmail
+               || item.uploader_email
+               || item.uploaded_by_email
+               || item.created_by_email
+               || ''
+           ).trim().toLowerCase();
+           if (currentEmail && itemEmail && itemEmail === currentEmail) return true;
+
+           const currentUserId = String(CURRENT_USER_ID || '').trim();
+           const itemUserId = String(
+               item.uploaderUserId
+               || item.uploader_user_id
+               || item.uploaded_by_user_id
+               || item.created_by_user_id
+               || item.profile_id
+               || item.user_id
+               || item.created_by
+               || ''
+           ).trim();
+           if (currentUserId && itemUserId && itemUserId === currentUserId) return true;
+
+           if (item.imageUrl && currentUserId) {
+               const imageUrl = String(item.imageUrl);
+               if (imageUrl.includes(`/${currentUserId}/`) || imageUrl.includes(currentUserId)) return true;
+           }
            return false;
        }
 
        function getOwnedUploads() {
            const groups = new Map();
-           allMemes.forEach(item => {
+           const combined = dedupeMemes([...(Array.isArray(allMemes) ? allMemes : []), ...(Array.isArray(generatedMemes) ? generatedMemes : [])]);
+           combined.forEach(item => {
                if (!isOwnedByCurrentUser(item)) return;
                const imageId = item.image_id || `local-${item.id}`;
                const existing = groups.get(imageId) || {
