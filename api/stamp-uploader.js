@@ -17,6 +17,13 @@ function deriveNameFromEmail(email) {
   return toTitleCase(local.replace(/[._-]+/g, ' ').trim() || email || 'Uploader');
 }
 
+function buildAuditUpdateFields(userId, isoTimestamp = new Date().toISOString()) {
+  return {
+    modified_by_user_id: userId,
+    modified_datetime_utc: isoTimestamp
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!SERVICE_KEY) return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY env var' });
@@ -36,11 +43,22 @@ module.exports = async function handler(req, res) {
     const email = String(authData.user.email || '').trim();
     const userId = String(authData.user.id || '').trim();
     const displayName = deriveNameFromEmail(email);
+    const auditFields = buildAuditUpdateFields(userId);
 
     const payloads = [
-      { uploader_email: email, uploader_name: displayName, uploader_user_id: userId },
-      { uploaded_by_email: email, uploaded_by_name: displayName, uploaded_by_user_id: userId },
-      { created_by_email: email, created_by_name: displayName, created_by_user_id: userId }
+      {
+        ...auditFields,
+        uploader_email: email,
+        uploader_name: displayName,
+        uploader_user_id: userId
+      },
+      {
+        ...auditFields,
+        uploaded_by_email: email,
+        uploaded_by_name: displayName,
+        uploaded_by_user_id: userId
+      },
+      { ...auditFields }
     ];
 
     for (const payload of payloads) {

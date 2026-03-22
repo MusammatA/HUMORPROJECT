@@ -162,6 +162,7 @@ module.exports = async function handler(req, res) {
           row.uploader_user_id ||
           row.uploaded_by_user_id ||
           row.created_by_user_id ||
+          row.modified_by_user_id ||
           row.profile_id ||
           row.user_id ||
           row.created_by ||
@@ -180,6 +181,7 @@ module.exports = async function handler(req, res) {
         row.uploader_user_id ||
         row.uploaded_by_user_id ||
         row.created_by_user_id ||
+        row.modified_by_user_id ||
         row.profile_id ||
         row.user_id ||
         row.created_by ||

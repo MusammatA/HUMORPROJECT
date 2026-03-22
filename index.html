@@ -99,6 +99,12 @@
        let FEED_FETCH_QUEUED = false;
        let ACCOUNT_ACTION_MESSAGE = '';
        let uploaderSearchTerm = '';
+       let discoverDirectory = [];
+       let discoverDirectoryTotal = 0;
+       let discoverDirectoryLoading = false;
+       let discoverDirectoryError = '';
+       let discoverDirectoryRequestSeq = 0;
+       let discoverSearchDebounceTimer = null;
        let communities = ['General'];
        let selectedCommunityName = 'General';
        let communityCreateMessage = '';
@@ -471,6 +477,7 @@
                || row.uploaderUserId
                || row.uploaded_by_user_id
                || row.created_by_user_id
+               || row.modified_by_user_id
                || row.profile_id
                || row.user_id
                || ''
@@ -714,6 +721,26 @@
            }
        }
 
+       async function fetchDiscoverDirectory(term = '') {
+           const safeTerm = encodeURIComponent(String(term || '').trim());
+           const token = await getAccessToken();
+           const res = await fetchWithTimeout(`/api/discover-uploaders?term=${safeTerm}`, {
+               headers: {
+                   Authorization: `Bearer ${token}`
+               },
+               cache: 'no-store'
+           }, 20000, 'discover-uploaders');
+           if (!res.ok) {
+               const body = await res.text().catch(() => '');
+               throw new Error(`discover-uploaders ${res.status}: ${body || 'request failed'}`);
+           }
+           const payload = await res.json();
+           return {
+               uploaders: Array.isArray(payload?.uploaders) ? payload.uploaders : [],
+               totalCount: Number(payload?.totalCount) || 0
+           };
+       }
+
        function chunkArray(items, size) {
            const out = [];
            for (let i = 0; i < items.length; i += size) {
@@ -840,6 +867,7 @@
                || item.uploader_user_id
                || item.uploaded_by_user_id
                || item.created_by_user_id
+               || item.modified_by_user_id
                || item.profile_id
                || item.user_id
                || item.created_by
@@ -912,6 +940,37 @@
                }))
                .filter(group => !term || group.searchValue.includes(term))
                .sort((a, b) => b.totalCaptions - a.totalCaptions);
+       }
+
+       async function loadDiscoverDirectory(term = '') {
+           const requestId = ++discoverDirectoryRequestSeq;
+           discoverDirectoryLoading = true;
+           discoverDirectoryError = '';
+           renderUploaderDirectorySection();
+           try {
+               const payload = await fetchDiscoverDirectory(term);
+               if (requestId !== discoverDirectoryRequestSeq) return;
+               discoverDirectory = payload.uploaders;
+               discoverDirectoryTotal = payload.totalCount;
+               discoverDirectoryLoading = false;
+               discoverDirectoryError = '';
+               renderUploaderDirectorySection();
+           } catch (error) {
+               if (requestId !== discoverDirectoryRequestSeq) return;
+               discoverDirectoryLoading = false;
+               discoverDirectoryError = String(error && error.message ? error.message : error);
+               if (discoverDirectoryError.includes('discover-uploaders 401') || discoverDirectoryError.includes('discover-uploaders 403')) {
+                   showLoginPrompt('Please sign in with a valid Columbia email to access Find Users.');
+                   currentView = 'grid';
+                   updateSideTabs();
+                   updateTopControls();
+                   renderCurrentView();
+                   return;
+               }
+               discoverDirectory = [];
+               discoverDirectoryTotal = 0;
+               renderUploaderDirectorySection();
+           }
        }
 
        function dedupeMemes(memes) {
@@ -1059,6 +1118,22 @@
            return session.access_token;
        }
 
+       function buildAuditInsertFields(userId, isoTimestamp = new Date().toISOString()) {
+           return {
+               created_by_user_id: userId,
+               modified_by_user_id: userId,
+               created_datetime_utc: isoTimestamp,
+               modified_datetime_utc: isoTimestamp
+           };
+       }
+
+       function buildAuditUpdateFields(userId, isoTimestamp = new Date().toISOString()) {
+           return {
+               modified_by_user_id: userId,
+               modified_datetime_utc: isoTimestamp
+           };
+       }
+
        function setUploadStatus(message, isError = false) {
            const messageText = message || '';
            const statusNodes = [
@@ -1102,12 +1177,23 @@
         }
 
        async function persistUploaderIdentityForImage(client, imageId) {
-           if (!client || !imageId || !CURRENT_USER_EMAIL) return;
+           if (!client || !imageId || !CURRENT_USER_EMAIL || !CURRENT_USER_ID) return;
            const displayName = getCurrentDisplayName() || deriveUploaderNameFromEmail(CURRENT_USER_EMAIL);
+           const auditFields = buildAuditUpdateFields(CURRENT_USER_ID);
            const payloads = [
-               { uploader_email: CURRENT_USER_EMAIL, uploader_name: displayName, uploader_user_id: CURRENT_USER_ID },
-               { uploaded_by_email: CURRENT_USER_EMAIL, uploaded_by_name: displayName, uploaded_by_user_id: CURRENT_USER_ID },
-               { created_by_email: CURRENT_USER_EMAIL, created_by_name: displayName, created_by_user_id: CURRENT_USER_ID }
+               {
+                   ...auditFields,
+                   uploader_email: CURRENT_USER_EMAIL,
+                   uploader_name: displayName,
+                   uploader_user_id: CURRENT_USER_ID
+               },
+               {
+                   ...auditFields,
+                   uploaded_by_email: CURRENT_USER_EMAIL,
+                   uploaded_by_name: displayName,
+                   uploaded_by_user_id: CURRENT_USER_ID
+               },
+               { ...auditFields }
            ];
            for (const payload of payloads) {
                const { error } = await client.from('captions').update(payload).eq('image_id', imageId);
@@ -1623,9 +1709,10 @@
 
        function clearUploaderSearch() {
            uploaderSearchTerm = '';
+           if (discoverSearchDebounceTimer) clearTimeout(discoverSearchDebounceTimer);
            const input = document.getElementById('uploader-search-input');
            if (input) input.value = '';
-           renderUploaderDirectorySection();
+           loadDiscoverDirectory('');
        }
 
        function setupUploaderSearch() {
@@ -1635,18 +1722,32 @@
            oldInput.parentNode.replaceChild(newInput, oldInput);
            newInput.addEventListener('input', (e) => {
                uploaderSearchTerm = e.target.value.toLowerCase();
-               renderUploaderDirectorySection();
+               if (discoverSearchDebounceTimer) clearTimeout(discoverSearchDebounceTimer);
+               discoverSearchDebounceTimer = setTimeout(() => {
+                   loadDiscoverDirectory(uploaderSearchTerm);
+               }, 220);
            });
        }
 
        function renderUploaderDirectorySection() {
-           const uploaderGroups = getUploadsByUploader(uploaderSearchTerm);
-           const totalUploaderGroups = getUploadsByUploader('').length;
            const countEl = document.getElementById('uploader-count-label');
            const listEl = document.getElementById('uploader-directory-container');
            if (!countEl || !listEl) return;
 
-           countEl.textContent = `Showing ${uploaderGroups.length} of ${totalUploaderGroups} uploaders`;
+           if (discoverDirectoryLoading) {
+               countEl.textContent = 'Loading uploader directory...';
+               listEl.innerHTML = `<p class="upload-empty">Looking through Supabase for uploader records...</p>`;
+               return;
+           }
+
+           if (discoverDirectoryError) {
+               countEl.textContent = 'Uploader directory unavailable';
+               listEl.innerHTML = `<p class="upload-empty">${escapeHtml(discoverDirectoryError)}</p>`;
+               return;
+           }
+
+           const uploaderGroups = Array.isArray(discoverDirectory) ? discoverDirectory : [];
+           countEl.textContent = `Showing ${uploaderGroups.length} of ${discoverDirectoryTotal} uploaders`;
            if (!uploaderGroups.length) {
                listEl.innerHTML = `<p class="upload-empty">No users match that search.</p>`;
                return;
@@ -2073,6 +2174,7 @@
            container.innerHTML = html;
            setupUploaderSearch();
            renderUploaderDirectorySection();
+           loadDiscoverDirectory(uploaderSearchTerm);
        }
 
        function renderCommunitiesView(container) {
@@ -2412,21 +2514,35 @@
                voteStats[captionId].myVote = nextVoteValue;
                voteStats[captionId].total = currentTotal;
 
-               const { error: upsertError } = await client.from('caption_votes').upsert({
-                   profile_id: CURRENT_USER_ID,
-                   caption_id: captionId,
-                   vote_value: nextVoteValue,
-                   created_datetime_utc: now,
-                   modified_datetime_utc: now
-               }, { onConflict: 'profile_id,caption_id' });
+               const { data: existingVote, error: existingVoteError } = await client
+                   .from('caption_votes')
+                   .select('profile_id')
+                   .eq('profile_id', CURRENT_USER_ID)
+                   .eq('caption_id', captionId)
+                   .maybeSingle();
 
-               if (upsertError) {
-                   await client.from('caption_votes').insert({
-                       profile_id: CURRENT_USER_ID,
-                       caption_id: captionId,
-                       vote_value: nextVoteValue,
-                       created_datetime_utc: now
-                   });
+               if (existingVoteError) throw existingVoteError;
+
+               if (existingVote) {
+                   const { error: updateVoteError } = await client
+                       .from('caption_votes')
+                       .update({
+                           vote_value: nextVoteValue,
+                           ...buildAuditUpdateFields(CURRENT_USER_ID, now)
+                       })
+                       .eq('profile_id', CURRENT_USER_ID)
+                       .eq('caption_id', captionId);
+                   if (updateVoteError) throw updateVoteError;
+               } else {
+                   const { error: insertVoteError } = await client
+                       .from('caption_votes')
+                       .insert({
+                           profile_id: CURRENT_USER_ID,
+                           caption_id: captionId,
+                           vote_value: nextVoteValue,
+                           ...buildAuditInsertFields(CURRENT_USER_ID, now)
+                       });
+                   if (insertVoteError) throw insertVoteError;
                }
 
            } catch (err) {
