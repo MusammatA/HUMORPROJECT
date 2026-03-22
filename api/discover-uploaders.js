@@ -35,6 +35,12 @@ function deriveNameFromEmail(email) {
   return toTitleCase(local.replace(/[._-]+/g, ' ').trim() || email || 'Uploader');
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
 function getCaptionText(row = {}) {
   const candidates = [
     row.content,
@@ -100,7 +106,14 @@ async function resolveUploaderIdentity(supabase, userIds) {
     try {
       const { data } = await supabase.auth.admin.getUserById(uid);
       const email = String(data?.user?.email || '').trim();
+      const name = String(
+        data?.user?.user_metadata?.full_name ||
+        data?.user?.user_metadata?.name ||
+        data?.user?.user_metadata?.display_name ||
+        ''
+      ).trim();
       if (email) emailById[uid] = email;
+      if (name) nameById[uid] = name;
     } catch (_err) {
       // Best effort only.
     }
@@ -130,6 +143,8 @@ module.exports = async function handler(req, res) {
     }
 
     const term = String(req.query?.term || '').trim().toLowerCase();
+    const normalizedTerm = normalizeSearchText(term);
+    const limit = Math.max(12, Math.min(60, Number(req.query?.limit) || (term ? 36 : 24)));
     const rowLimit = Math.max(1000, Math.min(12000, Number(req.query?.rowLimit) || 6000));
     const pageSize = 500;
     const maxPages = Math.ceil(rowLimit / pageSize);
@@ -258,20 +273,32 @@ module.exports = async function handler(req, res) {
         uploaderUserId: group.uploaderUserId,
         totalCaptions: group.totalCaptions,
         totalImages: group.imageIds.size,
-        items: group.items
+        items: group.items,
+        searchValue: `${group.label} ${group.uploaderEmail} ${group.uploaderName} ${group.uploaderUserId}`.toLowerCase(),
+        normalizedSearchValue: normalizeSearchText(`${group.label} ${group.uploaderEmail} ${group.uploaderName} ${group.uploaderUserId}`)
       }));
 
     const filtered = groups
       .filter((group) => {
         if (!term) return true;
-        const haystack = `${group.label} ${group.uploaderEmail} ${group.uploaderName} ${group.uploaderUserId}`.toLowerCase();
-        return haystack.includes(term);
+        return group.searchValue.includes(term) || (normalizedTerm && group.normalizedSearchValue.includes(normalizedTerm));
       })
       .sort((a, b) => b.totalCaptions - a.totalCaptions);
 
     return res.status(200).json({
       totalCount: groups.length,
-      uploaders: filtered
+      matchCount: filtered.length,
+      hasMore: filtered.length > limit,
+      uploaders: filtered.slice(0, limit).map((group) => ({
+        key: group.key,
+        label: group.label,
+        uploaderEmail: group.uploaderEmail,
+        uploaderName: group.uploaderName,
+        uploaderUserId: group.uploaderUserId,
+        totalCaptions: group.totalCaptions,
+        totalImages: group.totalImages,
+        items: group.items
+      }))
     });
   } catch (error) {
     return res.status(500).json({ error: String(error && error.message ? error.message : error) });

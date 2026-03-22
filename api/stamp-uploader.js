@@ -42,7 +42,12 @@ module.exports = async function handler(req, res) {
 
     const email = String(authData.user.email || '').trim();
     const userId = String(authData.user.id || '').trim();
-    const displayName = deriveNameFromEmail(email);
+    const displayName = String(
+      authData.user.user_metadata?.full_name ||
+      authData.user.user_metadata?.name ||
+      authData.user.user_metadata?.display_name ||
+      ''
+    ).trim() || deriveNameFromEmail(email);
     const auditFields = buildAuditUpdateFields(userId);
 
     const payloads = [

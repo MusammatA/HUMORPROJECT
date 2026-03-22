@@ -77,7 +77,14 @@ async function resolveUploaderIdentity(supabase, userIds) {
     try {
       const { data } = await supabase.auth.admin.getUserById(uid);
       const email = String(data?.user?.email || '').trim();
+      const name = String(
+        data?.user?.user_metadata?.full_name ||
+        data?.user?.user_metadata?.name ||
+        data?.user?.user_metadata?.display_name ||
+        ''
+      ).trim();
       if (email) emailById[uid] = email;
+      if (name) nameById[uid] = name;
     } catch (_err) {
       // Best effort only.
     }
@@ -96,7 +103,17 @@ async function resolveUploaderIdentity(supabase, userIds) {
       if (!resp.ok) continue;
       const payload = await resp.json();
       const email = String(payload?.email || payload?.user?.email || '').trim();
+      const name = String(
+        payload?.user_metadata?.full_name ||
+        payload?.user_metadata?.name ||
+        payload?.user_metadata?.display_name ||
+        payload?.user?.user_metadata?.full_name ||
+        payload?.user?.user_metadata?.name ||
+        payload?.user?.user_metadata?.display_name ||
+        ''
+      ).trim();
       if (email) emailById[uid] = email;
+      if (name) nameById[uid] = name;
     } catch (_err) {
       // Best effort only.
     }

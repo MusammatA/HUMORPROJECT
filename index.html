@@ -101,6 +101,8 @@
        let uploaderSearchTerm = '';
        let discoverDirectory = [];
        let discoverDirectoryTotal = 0;
+       let discoverDirectoryMatchCount = 0;
+       let discoverDirectoryHasMore = false;
        let discoverDirectoryLoading = false;
        let discoverDirectoryError = '';
        let discoverDirectoryRequestSeq = 0;
@@ -269,9 +271,20 @@
            return toTitleCase(spaced || email);
        }
 
+       function getPreferredUserName(user) {
+           const metadataName = String(
+               user?.user_metadata?.full_name
+               || user?.user_metadata?.name
+               || user?.user_metadata?.display_name
+               || ''
+           ).trim();
+           if (metadataName) return metadataName;
+           return deriveUploaderNameFromEmail(user?.email || '');
+       }
+
        function setCurrentUserIdentity(user) {
            CURRENT_USER_EMAIL = user?.email || '';
-           CURRENT_UPLOADER_NAME = deriveUploaderNameFromEmail(CURRENT_USER_EMAIL);
+           CURRENT_UPLOADER_NAME = getPreferredUserName(user);
        }
 
        function normalizeCommunityName(name) {
@@ -723,8 +736,9 @@
 
        async function fetchDiscoverDirectory(term = '') {
            const safeTerm = encodeURIComponent(String(term || '').trim());
+           const resultLimit = String(term || '').trim() ? 36 : 24;
            const token = await getAccessToken();
-           const res = await fetchWithTimeout(`/api/discover-uploaders?term=${safeTerm}`, {
+           const res = await fetchWithTimeout(`/api/discover-uploaders?term=${safeTerm}&limit=${resultLimit}`, {
                headers: {
                    Authorization: `Bearer ${token}`
                },
@@ -737,7 +751,9 @@
            const payload = await res.json();
            return {
                uploaders: Array.isArray(payload?.uploaders) ? payload.uploaders : [],
-               totalCount: Number(payload?.totalCount) || 0
+               totalCount: Number(payload?.totalCount) || 0,
+               matchCount: Number(payload?.matchCount) || 0,
+               hasMore: Boolean(payload?.hasMore)
            };
        }
 
@@ -952,6 +968,8 @@
                if (requestId !== discoverDirectoryRequestSeq) return;
                discoverDirectory = payload.uploaders;
                discoverDirectoryTotal = payload.totalCount;
+               discoverDirectoryMatchCount = payload.matchCount;
+               discoverDirectoryHasMore = payload.hasMore;
                discoverDirectoryLoading = false;
                discoverDirectoryError = '';
                renderUploaderDirectorySection();
@@ -969,6 +987,8 @@
                }
                discoverDirectory = [];
                discoverDirectoryTotal = 0;
+               discoverDirectoryMatchCount = 0;
+               discoverDirectoryHasMore = false;
                renderUploaderDirectorySection();
            }
        }
@@ -1747,7 +1767,12 @@
            }
 
            const uploaderGroups = Array.isArray(discoverDirectory) ? discoverDirectory : [];
-           countEl.textContent = `Showing ${uploaderGroups.length} of ${discoverDirectoryTotal} uploaders`;
+           const hasActiveSearch = Boolean(String(uploaderSearchTerm || '').trim());
+           countEl.textContent = hasActiveSearch
+               ? `Showing ${uploaderGroups.length} of ${discoverDirectoryMatchCount} matching uploaders`
+               : discoverDirectoryHasMore
+                   ? `Showing ${uploaderGroups.length} of ${discoverDirectoryTotal} uploaders`
+                   : `Showing ${uploaderGroups.length} of ${discoverDirectoryTotal} uploaders`;
            if (!uploaderGroups.length) {
                listEl.innerHTML = `<p class="upload-empty">No users match that search.</p>`;
                return;
@@ -1779,6 +1804,9 @@
                    </article>`;
            });
            html += `</div>`;
+           if (discoverDirectoryHasMore) {
+               html += `<p class="upload-empty">Too many results. Keep typing to narrow the list.</p>`;
+           }
            listEl.innerHTML = html;
        }
       
