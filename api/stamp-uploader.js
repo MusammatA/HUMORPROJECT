@@ -2,7 +2,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://secure.almostcrackd.ai';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 function toTitleCase(value) {
   return String(value || '')
@@ -26,6 +26,7 @@ function buildAuditUpdateFields(userId) {
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!SERVICE_KEY) return res.status(500).json({ error: 'Missing SUPABASE_SERVICE_ROLE_KEY env var' });
+  if (!ANON_KEY) return res.status(500).json({ error: 'Missing SUPABASE_ANON_KEY env var' });
 
   const authHeader = String(req.headers.authorization || '');
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';

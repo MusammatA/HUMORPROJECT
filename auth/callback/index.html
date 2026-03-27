@@ -1,4 +1,4 @@
-#<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -10,12 +10,30 @@
   <p style="text-align: center; margin-top: 50px; font-family: sans-serif;">Completing sign-in...</p>
 
   <script>
-    const SUPABASE_URL = 'https://secure.almostcrackd.ai';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ';
+    async function getPublicSupabaseConfig() {
+      const response = await fetch('/api/public-config', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        cache: 'no-store'
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to load public app config.');
+      }
+
+      const supabaseUrl = String(payload.supabaseUrl || '').trim();
+      const supabaseAnonKey = String(payload.supabaseAnonKey || '').trim();
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Public Supabase config is incomplete.');
+      }
+
+      return { supabaseUrl, supabaseAnonKey };
+    }
 
     async function completeAuth() {
       try {
-        const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const config = await getPublicSupabaseConfig();
+        const client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
 
