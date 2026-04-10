@@ -941,6 +941,48 @@ body.desktop-mode.mobile-nav-open .sidebar {
   margin-bottom: 12px;
 }
 
+.quickvote-guide {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 14px;
+}
+
+.quickvote-guide-item {
+  border: 1px solid rgba(244, 241, 255, 0.18);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.055);
+  color: #f4f1ff;
+  display: grid;
+  gap: 4px;
+  min-height: 86px;
+}
+
+.quickvote-guide-item i {
+  font-size: 1rem;
+}
+
+.quickvote-guide-item span {
+  color: #d8d1ec;
+  font-size: 0.83rem;
+}
+
+.quickvote-guide-item strong {
+  font-size: 1.04rem;
+  letter-spacing: 0.02em;
+}
+
+.quickvote-guide-item.reject {
+  border-color: rgba(191, 62, 42, 0.55);
+  box-shadow: inset 4px 0 0 rgba(191, 62, 42, 0.95);
+}
+
+.quickvote-guide-item.approve {
+  border-color: rgba(47, 143, 85, 0.55);
+  box-shadow: inset 4px 0 0 rgba(47, 143, 85, 0.95);
+}
+
 .swipe-controls {
   display: flex;
   justify-content: center;
@@ -964,6 +1006,53 @@ body.desktop-mode.mobile-nav-open .sidebar {
   transition: transform 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
 }
 
+.swipe-choice-overlay {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.swipe-choice-zone {
+  display: flex;
+  align-items: flex-start;
+  padding: 16px;
+}
+
+.swipe-choice-zone span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-size: 0.88rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+  opacity: 0.95;
+}
+
+.swipe-choice-zone-left {
+  justify-content: flex-start;
+  background: linear-gradient(90deg, rgba(191, 62, 42, 0.22), transparent 58%);
+}
+
+.swipe-choice-zone-left span {
+  background: rgba(191, 62, 42, 0.94);
+}
+
+.swipe-choice-zone-right {
+  justify-content: flex-end;
+  background: linear-gradient(270deg, rgba(47, 143, 85, 0.24), transparent 58%);
+}
+
+.swipe-choice-zone-right span {
+  background: rgba(47, 143, 85, 0.94);
+}
+
 .swipe-card:hover {
   transform: translateY(-3px);
   border-color: rgba(255, 79, 179, 0.35);
@@ -971,17 +1060,93 @@ body.desktop-mode.mobile-nav-open .sidebar {
 }
 
 .swipe-card.choice-like {
-  box-shadow: inset 0 0 0 9999px rgba(22, 163, 74, 0.28), 0 0 0 6px rgba(22, 163, 74, 0.95), var(--shadow);
+  box-shadow: inset 0 0 0 9999px rgba(47, 143, 85, 0.42), 0 0 0 7px rgba(47, 143, 85, 1), 0 0 42px rgba(47, 143, 85, 0.5), var(--shadow);
 }
 
 .swipe-card.choice-dislike {
-  box-shadow: inset 0 0 0 9999px rgba(220, 38, 38, 0.28), 0 0 0 6px rgba(220, 38, 38, 0.95), var(--shadow);
+  box-shadow: inset 0 0 0 9999px rgba(191, 62, 42, 0.44), 0 0 0 7px rgba(191, 62, 42, 1), 0 0 42px rgba(191, 62, 42, 0.48), var(--shadow);
 }
 
 .swipe-card .meme-image {
   height: min(70vh, 760px);
   object-fit: contain;
   background: #0b0817;
+}
+
+.quickvote-current {
+  border: 1px solid rgba(90, 148, 204, 0.35);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #d7d1ec;
+  background: rgba(10, 7, 23, 0.55);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.quickvote-current.up {
+  color: #dfffea;
+  border-color: rgba(47, 143, 85, 0.72);
+  background: rgba(47, 143, 85, 0.2);
+}
+
+.quickvote-current.down {
+  color: #ffe1db;
+  border-color: rgba(191, 62, 42, 0.72);
+  background: rgba(191, 62, 42, 0.22);
+}
+
+.quickvote-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.quickvote-action {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  color: #fff;
+  min-height: 76px;
+  padding: 13px 16px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 800;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  text-align: left;
+  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.quickvote-action i {
+  grid-row: span 2;
+  font-size: 1.35rem;
+}
+
+.quickvote-action span {
+  font-size: 1.08rem;
+}
+
+.quickvote-action small {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+}
+
+.quickvote-action.reject {
+  background: linear-gradient(135deg, #8f2f25, var(--down));
+  box-shadow: 0 12px 28px rgba(191, 62, 42, 0.24);
+}
+
+.quickvote-action.approve {
+  background: linear-gradient(135deg, #216f42, var(--up));
+  box-shadow: 0 12px 28px rgba(47, 143, 85, 0.24);
+}
+
+.quickvote-action:hover {
+  transform: translateY(-2px);
+  filter: saturate(1.08);
 }
 
 .loading-copy {

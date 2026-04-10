@@ -2459,17 +2459,43 @@
            const displayUrl = safeUrl(item.imageUrl, fallbackGif);
            const safeContent = safePreviewText(item.content);
            const stats = voteStats[item.id] || { total: 0, myVote: 0 };
+           const currentVoteLabel = stats.myVote === 1
+               ? 'Current vote: Upvote'
+               : stats.myVote === -1
+                   ? 'Current vote: Downvote'
+                   : 'Current vote: Not rated yet';
+           const currentVoteClass = stats.myVote === 1 ? 'up' : stats.myVote === -1 ? 'down' : 'neutral';
 
            container.innerHTML = `
                ${renderHeaderActions()}
                <div class="swipe-panel">
-                   <div class="swipe-hint">Left = pass · Right = approve · Swipe also works</div>
+                   <div class="swipe-hint">Quick Vote saves the same rating as the grid buttons.</div>
+                   <div class="quickvote-guide" aria-label="Quick vote instructions">
+                       <div class="quickvote-guide-item reject">
+                           <i class="fa-solid fa-arrow-left"></i>
+                           <span>Tap left side or swipe left</span>
+                           <strong>Downvote</strong>
+                       </div>
+                       <div class="quickvote-guide-item approve">
+                           <i class="fa-solid fa-arrow-right"></i>
+                           <span>Tap right side or swipe right</span>
+                           <strong>Upvote</strong>
+                       </div>
+                   </div>
                    <div class="swipe-controls">
                        <button class="logout-btn" onclick="rewindSwipe()">
                            <i class="fa-solid fa-arrow-left"></i> Undo Vote
                        </button>
                    </div>
                    <div class="swipe-card" id="swipe-card-${item.id}">
+                       <div class="swipe-choice-overlay" aria-hidden="true">
+                           <div class="swipe-choice-zone swipe-choice-zone-left">
+                               <span><i class="fa-solid fa-thumbs-down"></i> Downvote</span>
+                           </div>
+                           <div class="swipe-choice-zone swipe-choice-zone-right">
+                               <span><i class="fa-solid fa-thumbs-up"></i> Upvote</span>
+                           </div>
+                       </div>
                        <img src="${displayUrl}" class="meme-image" alt="Meme"
                             onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='${fallbackGif}';">
                        <div class="card-content">${safeContent}</div>
@@ -2480,8 +2506,21 @@
                            <div class="vote-controls">
                                <span class="vote-count">${stats.total}</span>
                            </div>
+                           <span class="quickvote-current ${currentVoteClass}">${currentVoteLabel}</span>
                            <small style="color:#aaa;">${swipeIndex + 1} / ${memes.length}</small>
                        </div>
+                   </div>
+                   <div class="quickvote-actions" aria-label="Quick vote buttons">
+                       <button class="quickvote-action reject" onclick="handleSwipeChoice(-1)">
+                           <i class="fa-solid fa-thumbs-down"></i>
+                           <span>Downvote</span>
+                           <small>Not funny</small>
+                       </button>
+                       <button class="quickvote-action approve" onclick="handleSwipeChoice(1)">
+                           <i class="fa-solid fa-thumbs-up"></i>
+                           <span>Upvote</span>
+                           <small>Funny</small>
+                       </button>
                    </div>
                </div>`;
 
