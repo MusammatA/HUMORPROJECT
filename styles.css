@@ -179,8 +179,7 @@ body.desktop-mode .container {
   transform: translateY(-1px);
 }
 
-.home-cta-row .browse-btn,
-.home-story-card .browse-btn {
+.home-cta-row .browse-btn {
   margin-top: 0;
 }
 
@@ -619,6 +618,24 @@ p.subtitle {
   display: flex;
   justify-content: center;
   margin: 8px 0 30px;
+}
+
+.load-more-btn {
+  border: 1px solid rgba(90, 148, 204, 0.34);
+  background: rgba(255, 253, 248, 0.9);
+  color: #1f3f49;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-weight: 800;
+  font-family: 'IBM Plex Mono', monospace;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(31, 45, 47, 0.1);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.load-more-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(31, 45, 47, 0.14);
 }
 
 .account-panel {

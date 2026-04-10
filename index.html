@@ -60,12 +60,6 @@
          <p>
             Brain Rot Central is an interactive meme lab where you can explore community uploads, react in fast swipe mode, and generate AI-powered captions for your own images. Built as part of the Humor Study, the platform experiments with how AI can create humor while giving users fun, dynamic ways to engage, share, and shape the results.
          </p>
-         <button class="browse-btn" id="browse-btn" onclick="goToFeed()">
-            Browse the Feed
-         </button>
-         <button class="browse-btn secondary" onclick="goToCreate()">
-            Generate Captions
-         </button>
       </div>
    </section>
 
@@ -2583,7 +2577,7 @@
            if (hasMore) {
                html += `
                    <div class="load-more-wrap">
-                       <button class="browse-btn secondary" onclick="loadMoreGrid()">
+                       <button class="load-more-btn" onclick="loadMoreGrid()">
                            Load more captions (${memes.length - visibleMemes.length} left)
                        </button>
                    </div>`;
