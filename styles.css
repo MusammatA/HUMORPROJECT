@@ -239,6 +239,30 @@ p.subtitle {
   font-size: 0.9rem;
 }
 
+.auth-remember {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 16px;
+  color: #f5f1ff;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.auth-remember input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--brand-2);
+  cursor: pointer;
+}
+
+.auth-hint {
+  margin-top: 12px;
+  color: #cfc7e8;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .login-btn,
 .logout-btn {
   border: 1px solid transparent;

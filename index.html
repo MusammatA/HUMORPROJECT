@@ -136,6 +136,7 @@
        const COMMUNITY_MAP_KEY_PREFIX = 'community_map_v1_';
        const PIPELINE_BASE_URL = 'https://api.almostcrackd.ai';
        const PUBLIC_CONFIG_ENDPOINT = '/api/public-config';
+       const STAY_SIGNED_IN_KEY = 'brain_rot_stay_signed_in_v1';
        const PHONE_MEDIA_QUERY = '(max-width: 900px)';
        const FEED_REFRESH_MS = 30000;
        const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -185,8 +186,44 @@
        async function ensureClientReady() {
            if (supabaseClient) return supabaseClient;
            const config = await getPublicSupabaseConfig();
-           supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+           supabaseClient = window.supabase.createClient(
+               config.supabaseUrl,
+               config.supabaseAnonKey,
+               getSupabaseClientOptions()
+           );
            return supabaseClient;
+       }
+
+       function getStaySignedInPreference() {
+           try {
+               return localStorage.getItem(STAY_SIGNED_IN_KEY) !== 'false';
+           } catch (_err) {
+               return true;
+           }
+       }
+
+       function setStaySignedInPreference(value) {
+           try {
+               localStorage.setItem(STAY_SIGNED_IN_KEY, value ? 'true' : 'false');
+           } catch (_err) {}
+       }
+
+       function getStaySignedInInputValue() {
+           const input = document.getElementById('stay-signed-in');
+           return input ? Boolean(input.checked) : getStaySignedInPreference();
+       }
+
+       function getSupabaseClientOptions() {
+           const storage = getStaySignedInPreference() ? localStorage : sessionStorage;
+           return {
+               auth: {
+                   persistSession: true,
+                   autoRefreshToken: true,
+                   detectSessionInUrl: true,
+                   flowType: 'pkce',
+                   storage
+               }
+           };
        }
 
        function getClient() {
@@ -1153,6 +1190,8 @@
        }
 
        async function signIn() {
+           setStaySignedInPreference(getStaySignedInInputValue());
+           supabaseClient = null;
            const client = await ensureClientReady();
            await client.auth.signInWithOAuth({
                provider: 'google',
@@ -1862,9 +1901,14 @@
                    <h2>Brain Rot Central</h2>
                    <p class="auth-subtext">Sign in with Google to vote, swipe, and generate new captions.</p>
                    ${message ? `<p class="auth-subtext" style="color:#ffb4d9;">${escapeHtml(message)}</p>` : ''}
+                   <label class="auth-remember">
+                       <input type="checkbox" id="stay-signed-in" ${getStaySignedInPreference() ? 'checked' : ''}>
+                       <span>Keep me signed in on this device</span>
+                   </label>
                    <button class="login-btn" onclick="signIn()">
                        <i class="fa-brands fa-google"></i> Sign in with Google
                    </button>
+                   <div class="auth-hint">Best for your own laptop or phone. Uncheck this on shared computers.</div>
                    <div class="auth-meta">Callback route: /auth/callback</div>
                </div>`;
        }

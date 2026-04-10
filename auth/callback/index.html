@@ -10,6 +10,29 @@
   <p style="text-align: center; margin-top: 50px; font-family: sans-serif;">Completing sign-in...</p>
 
   <script>
+    const STAY_SIGNED_IN_KEY = 'brain_rot_stay_signed_in_v1';
+
+    function getStaySignedInPreference() {
+      try {
+        return localStorage.getItem(STAY_SIGNED_IN_KEY) !== 'false';
+      } catch (_err) {
+        return true;
+      }
+    }
+
+    function getSupabaseClientOptions() {
+      const storage = getStaySignedInPreference() ? localStorage : sessionStorage;
+      return {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          flowType: 'pkce',
+          storage
+        }
+      };
+    }
+
     async function getPublicSupabaseConfig() {
       const response = await fetch('/api/public-config', {
         method: 'GET',
@@ -33,7 +56,11 @@
     async function completeAuth() {
       try {
         const config = await getPublicSupabaseConfig();
-        const client = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        const client = window.supabase.createClient(
+          config.supabaseUrl,
+          config.supabaseAnonKey,
+          getSupabaseClientOptions()
+        );
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
 
