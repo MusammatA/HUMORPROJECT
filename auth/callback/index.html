@@ -20,17 +20,25 @@
       }
     }
 
-    function getSupabaseClientOptions() {
-      const storage = getStaySignedInPreference() ? localStorage : sessionStorage;
+    function getSupabaseClientOptions(options = {}) {
+      const usePersistentStorage = typeof options.usePersistentStorage === 'boolean'
+        ? options.usePersistentStorage
+        : getStaySignedInPreference();
+      const storage = usePersistentStorage ? localStorage : sessionStorage;
       return {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
-          detectSessionInUrl: true,
+          detectSessionInUrl: options.detectSessionInUrl !== false,
           flowType: 'pkce',
           storage
         }
       };
+    }
+
+    function isPkceVerifierError(error) {
+      const message = String(error?.message || error || '').toLowerCase();
+      return message.includes('pkce') || message.includes('code verifier');
     }
 
     async function getPublicSupabaseConfig() {
@@ -53,21 +61,45 @@
       return { supabaseUrl, supabaseAnonKey };
     }
 
-    async function completeAuth() {
-      try {
-        const config = await getPublicSupabaseConfig();
+    async function exchangeCodeForSession(config, code) {
+      const preferredPersistentStorage = getStaySignedInPreference();
+      const storageAttempts = [preferredPersistentStorage, !preferredPersistentStorage];
+      let lastError = null;
+
+      for (const usePersistentStorage of storageAttempts) {
         const client = window.supabase.createClient(
           config.supabaseUrl,
           config.supabaseAnonKey,
-          getSupabaseClientOptions()
+          getSupabaseClientOptions({
+            usePersistentStorage,
+            detectSessionInUrl: false
+          })
         );
+
+        const { error } = await client.auth.exchangeCodeForSession(code);
+        if (!error) return;
+
+        lastError = error;
+        if (!isPkceVerifierError(error)) throw error;
+      }
+
+      throw lastError || new Error('Unable to complete sign-in.');
+    }
+
+    async function completeAuth() {
+      try {
+        const config = await getPublicSupabaseConfig();
         const params = new URLSearchParams(window.location.search);
         const code = params.get('code');
 
         if (code) {
-          const { error } = await client.auth.exchangeCodeForSession(code);
-          if (error) throw error;
+          await exchangeCodeForSession(config, code);
         } else {
+          const client = window.supabase.createClient(
+            config.supabaseUrl,
+            config.supabaseAnonKey,
+            getSupabaseClientOptions({ detectSessionInUrl: true })
+          );
           const { error } = await client.auth.getSession();
           if (error) throw error;
         }
