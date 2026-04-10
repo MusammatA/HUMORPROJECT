@@ -16,13 +16,13 @@
    <aside class="sidebar" id="sidebar" style="display:none;">
       <div class="sidebar-title">Modes</div>
       <button id="tab-grid" class="side-tab active" onclick="switchView('grid')">
-         <i class="fa-solid fa-table-cells-large"></i> Gallery
+         <i class="fa-solid fa-table-cells-large"></i> Gallery <span class="tab-badge">Public</span>
       </button>
       <button id="tab-swipe" class="side-tab" onclick="switchView('swipe')">
-         <i class="fa-solid fa-hand-pointer"></i> Quick Vote
+         <i class="fa-solid fa-hand-pointer"></i> Quick Vote <span class="tab-badge locked">Login</span>
       </button>
       <button id="tab-upload" class="side-tab" onclick="switchView('upload')">
-         <i class="fa-solid fa-upload"></i> Create
+         <i class="fa-solid fa-upload"></i> Create <span class="tab-badge locked">Login</span>
       </button>
       <button id="tab-account" class="side-tab" onclick="switchView('account')">
          <i class="fa-solid fa-user-gear"></i> Account
@@ -42,7 +42,15 @@
       <div class="home-hero-inner">
          <p class="home-kicker">Welcome</p>
          <h1 class="home-title">Brain Rot Central</h1>
-         <p class="home-subtitle">Scroll down to explore the feed and vote on captions.</p>
+         <p class="home-subtitle">Browse AI-generated meme captions, vote on what is funny, and upload your own images to generate new ones.</p>
+         <div class="home-cta-row">
+            <button class="browse-btn primary" onclick="goToFeed()">
+               Browse Captions
+            </button>
+            <button class="browse-btn secondary" onclick="goToCreate()">
+               Upload an Image
+            </button>
+         </div>
       </div>
    </section>
 
@@ -54,6 +62,9 @@
          </p>
          <button class="browse-btn" id="browse-btn" onclick="goToFeed()">
             Browse the Feed
+         </button>
+         <button class="browse-btn secondary" onclick="goToCreate()">
+            Generate Captions
          </button>
       </div>
    </section>
@@ -123,6 +134,7 @@
        let SERVER_SEARCH_RESULTS = null;
        let SEARCH_REQUEST_SEQ = 0;
        let SEARCH_DEBOUNCE_TIMER = null;
+       let gridVisibleCount = 24;
        const VOTE_COOLDOWNS = {};
        let GENERATION_UI_STATE = {
            status: 'idle',
@@ -137,6 +149,8 @@
        const PIPELINE_BASE_URL = 'https://api.almostcrackd.ai';
        const PUBLIC_CONFIG_ENDPOINT = '/api/public-config';
        const STAY_SIGNED_IN_KEY = 'brain_rot_stay_signed_in_v1';
+       const ONBOARDING_DISMISSED_KEY = 'brain_rot_onboarding_dismissed_v1';
+       const GRID_PAGE_SIZE = 24;
        const PHONE_MEDIA_QUERY = '(max-width: 900px)';
        const FEED_REFRESH_MS = 30000;
        const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -583,6 +597,60 @@
            content.prepend(line);
        }
 
+       function showToast(message, type = 'info') {
+           const text = String(message || '').trim();
+           if (!text) return;
+           let stack = document.getElementById('toast-stack');
+           if (!stack) {
+               stack = document.createElement('div');
+               stack.id = 'toast-stack';
+               stack.className = 'toast-stack';
+               document.body.appendChild(stack);
+           }
+           const toast = document.createElement('div');
+           toast.className = `toast ${type}`;
+           toast.textContent = text;
+           stack.appendChild(toast);
+           window.setTimeout(() => {
+               toast.classList.add('leaving');
+               window.setTimeout(() => toast.remove(), 240);
+           }, 2600);
+       }
+
+       function isOnboardingDismissed() {
+           try {
+               return localStorage.getItem(ONBOARDING_DISMISSED_KEY) === 'true';
+           } catch (_err) {
+               return false;
+           }
+       }
+
+       function dismissOnboarding() {
+           try {
+               localStorage.setItem(ONBOARDING_DISMISSED_KEY, 'true');
+           } catch (_err) {}
+           const card = document.getElementById('onboarding-card');
+           if (card) card.remove();
+       }
+
+       function renderOnboardingCard() {
+           if (isOnboardingDismissed()) return '';
+           return `
+               <section class="onboarding-card" id="onboarding-card">
+                   <div>
+                       <div class="onboarding-kicker">First time here?</div>
+                       <h3>Start in four moves.</h3>
+                   </div>
+                   <div class="onboarding-steps">
+                       <span><strong>1</strong> Browse captions</span>
+                       <span><strong>2</strong> Vote in Gallery or Quick Vote</span>
+                       <span><strong>3</strong> Upload an image</span>
+                       <span><strong>4</strong> Explore communities</span>
+                   </div>
+                   <button class="onboarding-dismiss" onclick="dismissOnboarding()">Got it</button>
+               </section>`;
+       }
+
        function detectPhoneClient() {
            const ua = String(navigator.userAgent || '').toLowerCase();
            const hasMobileUA = /iphone|ipod|android|mobile|ipad/.test(ua);
@@ -749,14 +817,25 @@
                return;
            }
            currentView = view;
+           if (view === 'grid') resetGridPagination();
            updateSideTabs();
            updateTopControls();
            renderCurrentView();
            if (IS_PHONE_CLIENT) closeMobileNav();
        }
 
+       function resetGridPagination() {
+           gridVisibleCount = GRID_PAGE_SIZE;
+       }
+
+       function loadMoreGrid() {
+           gridVisibleCount += GRID_PAGE_SIZE;
+           renderCurrentView();
+       }
+
        function goToFeed() {
            currentView = 'grid';
+           resetGridPagination();
            updateSideTabs();
            updateTopControls();
            renderCurrentView();
@@ -764,6 +843,20 @@
            if (feed) {
                feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
            }
+       }
+
+       function goToCreate() {
+           if (getViewAccessMessage('upload')) {
+               showLoginPrompt('Sign in to upload images and generate captions.');
+               goToFeed();
+               return;
+           }
+           currentView = 'upload';
+           updateSideTabs();
+           updateTopControls();
+           renderCurrentView();
+           const feed = document.querySelector('.container');
+           if (feed) feed.scrollIntoView({ behavior: 'smooth', block: 'start' });
        }
 
        function initHomeAnimations() {
@@ -1251,6 +1344,28 @@
            if (text) text.textContent = label ? `${p}% · ${label}` : `${p}%`;
        }
 
+       function setUploadStep(activeIndex = 0, state = 'running') {
+           const steps = Array.from(document.querySelectorAll('.upload-step'));
+           if (!steps.length) return;
+           steps.forEach((step, index) => {
+               step.classList.toggle('done', index < activeIndex || state === 'complete');
+               step.classList.toggle('active', index === activeIndex && state === 'running');
+               step.classList.toggle('error', index === activeIndex && state === 'error');
+           });
+       }
+
+       function renderUploadSteps() {
+           const labels = ['Prepare', 'Upload', 'Register', 'Generate', 'Save'];
+           return `
+               <div class="upload-step-list" aria-label="Upload progress steps">
+                   ${labels.map((label, index) => `
+                       <div class="upload-step ${index === 0 ? 'active' : ''}">
+                           <span>${index + 1}</span>
+                           <strong>${label}</strong>
+                       </div>`).join('')}
+               </div>`;
+       }
+
        function normalizeGeneratedCaptions(captions, cdnUrl, imageId = null) {
            const list = Array.isArray(captions) ? captions : [];
            const generatedAtUtc = new Date().toISOString();
@@ -1469,6 +1584,7 @@
                LAST_UPLOAD_AT = nowMs;
                const client = getClient();
                setCreateProgress(5, 'Initializing');
+               setUploadStep(0, 'running');
                setGenerationUIState({
                    status: 'running',
                    message: 'Preparing upload',
@@ -1479,6 +1595,7 @@
                const token = await getAccessToken();
                setUploadStatus('Requesting an upload lane...');
                setCreateProgress(20, 'Generating upload URL');
+               setUploadStep(0, 'running');
 
                console.log('[Pipeline Step 1] Generate presigned URL', { contentType: file.type });
                const step1Res = await fetchWithTimeout(`${PIPELINE_BASE_URL}/pipeline/generate-presigned-url`, {
@@ -1495,6 +1612,7 @@
                const cdnUrl = step1Data.cdnUrl;
                setGenerationUIState({ status: 'running', message: 'Uploading bytes' });
                setCreateProgress(45, 'Uploading image');
+               setUploadStep(1, 'running');
                console.log('[Pipeline Step 1] Success', { presignedUrl, cdnUrl });
 
                setUploadStatus('Uploading pixels...');
@@ -1509,6 +1627,7 @@
                if (!step2Res.ok) throw new Error(`Step 2 failed: ${step2Res.status}`);
                setGenerationUIState({ status: 'running', message: 'Registering image' });
                setCreateProgress(65, 'Registering image');
+               setUploadStep(2, 'running');
                console.log('[Pipeline Step 2] Success');
 
                setUploadStatus('Registering your upload...');
@@ -1529,6 +1648,7 @@
                const imageId = step3Data.imageId;
                setGenerationUIState({ status: 'running', message: 'Generating captions' });
                setCreateProgress(82, 'Generating captions');
+               setUploadStep(3, 'running');
                console.log('[Pipeline Step 3] Success', { imageId });
 
                setUploadStatus('Generating caption options...');
@@ -1546,6 +1666,7 @@
                const modelTag = extractModelTag(step4Data);
                setGenerationUIState({ status: 'ready', message: 'Captions ready', modelTag });
                setCreateProgress(100, 'Complete');
+               setUploadStep(4, 'running');
                console.log('[Pipeline Step 4] Success', step4Data);
 
                const generated = extractGeneratedCaptions(step4Data);
@@ -1562,6 +1683,7 @@
                    generatedMemes = dedupeMemes([...newCaptions, ...generatedMemes]);
                    saveGeneratedMemes();
                    setUploadStatus(`New batch ready: ${newCaptions.length} caption(s).`);
+                   showToast(`${newCaptions.length} caption(s) generated`, 'success');
                    communityUploadStatus = `Uploaded to ${communityName}. ${newCaptions.length} caption(s) generated.`;
                } else {
                    setUploadStatus('Upload succeeded, but no captions were returned.');
@@ -1582,6 +1704,7 @@
                    setUploadStatus(visible
                        ? 'Saved to shared feed for everyone.'
                        : 'Saved, but still propagating. Refresh in a few seconds.');
+                   setUploadStep(4, 'complete');
                } else if (persistedError) {
                    console.warn('[Pipeline] Persist check failed', persistedError);
                }
@@ -1595,6 +1718,8 @@
                setGenerationUIState({ status: 'error', message: 'Generation failed' });
                setUploadStatus(err.message || 'Upload failed.', true);
                setCreateProgress(100, 'Failed');
+               setUploadStep(4, 'error');
+               showToast('Upload failed. Check the status message.', 'error');
                if (targetCommunity) communityUploadStatus = err.message || 'Upload failed.';
            } finally {
                UPLOAD_IN_FLIGHT = false;
@@ -1613,6 +1738,7 @@
                PENDING_CREATE_UPLOAD_FILE = file;
                setUploadStatus(`Ready to upload: ${file.name}`);
                setCreateProgress(0, 'Ready');
+               setUploadStep(0, 'running');
            });
        }
 
@@ -1669,6 +1795,7 @@
            ensureCommunityExists(name);
            selectedCommunityName = name;
            communityCreateMessage = `Community "${name}" is ready.`;
+           showToast(`Community "${name}" is ready`, 'success');
            input.value = '';
            saveCommunityState();
            syncCommunitiesToProfile().catch(err => console.warn('[Communities] sync error', err));
@@ -1690,6 +1817,7 @@
            const client = getClient();
            await fetchAndShowMemes(client, container);
            if (showNotice) setUploadStatus('Feed refreshed.');
+           if (showNotice) showToast('Feed refreshed', 'success');
        }
 
        function startAutoRefresh() {
@@ -1776,6 +1904,7 @@
            generatedMemes = generatedMemes.filter(item => item.image_id !== imageId);
            saveGeneratedMemes();
            ACCOUNT_ACTION_MESSAGE = 'Upload deleted.';
+           showToast('Upload deleted', 'success');
            renderCurrentView();
        }
 
@@ -1798,6 +1927,7 @@
            );
            saveGeneratedMemes();
            ACCOUNT_ACTION_MESSAGE = 'Display name updated across your uploads.';
+           showToast('Display name saved', 'success');
            renderCurrentView();
        }
 
@@ -1806,7 +1936,13 @@
            if (discoverSearchDebounceTimer) clearTimeout(discoverSearchDebounceTimer);
            const input = document.getElementById('uploader-search-input');
            if (input) input.value = '';
-           loadDiscoverDirectory('');
+           discoverDirectory = [];
+           discoverDirectoryTotal = 0;
+           discoverDirectoryMatchCount = 0;
+           discoverDirectoryHasMore = false;
+           discoverDirectoryLoading = false;
+           discoverDirectoryError = '';
+           renderUploaderDirectorySection();
        }
 
        function setupUploaderSearch() {
@@ -1840,8 +1976,18 @@
                return;
            }
 
-           const uploaderGroups = Array.isArray(discoverDirectory) ? discoverDirectory : [];
            const hasActiveSearch = Boolean(String(uploaderSearchTerm || '').trim());
+           if (!hasActiveSearch) {
+               countEl.textContent = 'Search by name or Columbia email';
+               listEl.innerHTML = `
+                   <div class="discover-empty-state">
+                       <h4>Find an uploader without scrolling a giant list.</h4>
+                       <p>Type a name, UNI, or Columbia email to see who uploaded what.</p>
+                   </div>`;
+               return;
+           }
+
+           const uploaderGroups = Array.isArray(discoverDirectory) ? discoverDirectory : [];
            countEl.textContent = hasActiveSearch
                ? `Showing ${uploaderGroups.length} of ${discoverDirectoryMatchCount} matching uploaders`
                : discoverDirectoryHasMore
@@ -1868,7 +2014,7 @@
                    const displayUrl = safeUrl(item.imageUrl, fallbackGif);
                    html += `
                            <div class="uploader-preview-item">
-                               <img src="${displayUrl}" class="uploader-preview-image" alt="Uploader meme preview"
+                               <img src="${displayUrl}" class="uploader-preview-image" alt="Uploader meme preview" loading="lazy" decoding="async"
                                     onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif';">
                                <div class="uploader-preview-caption">${safePreviewText(item.content || '')}</div>
                            </div>`;
@@ -2156,6 +2302,7 @@
                        <button class="logout-btn" id="create-upload-btn">
                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload Image
                        </button>
+                       ${renderUploadSteps()}
                        <div class="upload-progress-track" aria-hidden="true">
                            <div id="upload-progress-fill" class="upload-progress-fill"></div>
                        </div>
@@ -2182,7 +2329,7 @@
 
                    html += `
                    <li id="card-${item.id}">
-                       <img src="${displayUrl}" class="meme-image" alt="Meme"
+                       <img src="${displayUrl}" class="meme-image" alt="Meme" loading="lazy" decoding="async"
                             onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='${fallbackGif}';">
                        <div class="card-content">${safeContent}</div>
                        ${renderAIMeta(item)}
@@ -2248,7 +2395,7 @@
                    const safeImageId = escapeHtml(group.imageId);
                    html += `
                        <article class="account-upload-item">
-                           <img class="account-upload-preview" src="${safePreview}" alt="Upload preview">
+                           <img class="account-upload-preview" src="${safePreview}" alt="Upload preview" loading="lazy" decoding="async">
                            <div class="account-upload-meta">
                                <div><strong>Image ID:</strong> ${safeImageId}</div>
                                <div><strong>Captions:</strong> ${group.captions.length}</div>
@@ -2269,8 +2416,9 @@
                ${renderHeaderActions(false)}
                <section class="account-panel">
                    <h3 class="account-title">Find Other Uploaders</h3>
+                   <p class="section-help">Search first so the page stays fast and readable. Results come from Supabase uploader records.</p>
                    <div class="account-name-controls">
-                       <input id="uploader-search-input" class="account-name-input" placeholder="Search by Columbia email..." value="${escapeHtml(uploaderSearchTerm)}">
+                       <input id="uploader-search-input" class="account-name-input" placeholder="Search by name, UNI, or Columbia email..." value="${escapeHtml(uploaderSearchTerm)}">
                        <button class="logout-btn" onclick="clearUploaderSearch()">
                            <i class="fa-solid fa-xmark"></i> Clear
                        </button>
@@ -2281,7 +2429,7 @@
            container.innerHTML = html;
            setupUploaderSearch();
            renderUploaderDirectorySection();
-           loadDiscoverDirectory(uploaderSearchTerm);
+           if (String(uploaderSearchTerm || '').trim()) loadDiscoverDirectory(uploaderSearchTerm);
        }
 
        function renderCommunitiesView(container) {
@@ -2314,6 +2462,7 @@
                        <button class="logout-btn" id="community-upload-btn">
                            <i class="fa-solid fa-cloud-arrow-up"></i> Upload to Community
                        </button>
+                       ${renderUploadSteps()}
                        <div class="upload-status" id="community-upload-status">${escapeHtml(communityUploadStatus || '')}</div>
                    </div>
                    ${communityCreateMessage ? `<div class="account-message">${escapeHtml(communityCreateMessage)}</div>` : ''}
@@ -2336,7 +2485,7 @@
 
                    html += `
                        <li id="card-${item.id}">
-                           <img src="${displayUrl}" class="meme-image" alt="Meme"
+                           <img src="${displayUrl}" class="meme-image" alt="Meme" loading="lazy" decoding="async"
                                 onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='${fallbackGif}';">
                            <div class="card-content">${safeContent}</div>
                            ${renderAIMeta(item)}
@@ -2386,12 +2535,15 @@
                container.innerHTML = `<p style="text-align:center;">No captions match your current filter.</p>`;
                return;
            }
+           const visibleMemes = memes.slice(0, gridVisibleCount);
+           const hasMore = memes.length > visibleMemes.length;
 
            let html = `
                ${renderHeaderActions()}
+               ${renderOnboardingCard()}
                <ul>`;
           
-           memes.forEach(item => {
+           visibleMemes.forEach(item => {
                const fallbackGif = "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3R6eW55b3R6eW55b3R6eW55/26hkhKd9CQeRv7lqM/giphy.gif";
                const displayUrl = safeUrl(item.imageUrl, fallbackGif);
                const safeContent = safePreviewText(item.content);
@@ -2403,7 +2555,7 @@
 
                html += `
                    <li id="card-${item.id}">
-                       <img src="${displayUrl}" class="meme-image" alt="Meme"
+                       <img src="${displayUrl}" class="meme-image" alt="Meme" loading="lazy" decoding="async"
                             onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='${fallbackGif}';">
                       
                        <div class="card-content">${safeContent}</div>
@@ -2427,7 +2579,16 @@
                        </div>
                    </li>`;
            });
-           container.innerHTML = html + `</ul>`;
+           html += `</ul>`;
+           if (hasMore) {
+               html += `
+                   <div class="load-more-wrap">
+                       <button class="browse-btn secondary" onclick="loadMoreGrid()">
+                           Load more captions (${memes.length - visibleMemes.length} left)
+                       </button>
+                   </div>`;
+           }
+           container.innerHTML = html;
        }
 
        function renderSwipe(memes, container) {
@@ -2465,11 +2626,21 @@
                    ? 'Current vote: Downvote'
                    : 'Current vote: Not rated yet';
            const currentVoteClass = stats.myVote === 1 ? 'up' : stats.myVote === -1 ? 'down' : 'neutral';
+           const swipePercent = Math.round(((swipeIndex + 1) / memes.length) * 100);
 
            container.innerHTML = `
                ${renderHeaderActions()}
                <div class="swipe-panel">
                    <div class="swipe-hint">Quick Vote saves the same rating as the grid buttons.</div>
+                   <div class="quickvote-progress">
+                       <div class="quickvote-progress-label">
+                           <span>Progress</span>
+                           <strong>${swipeIndex + 1} / ${memes.length}</strong>
+                       </div>
+                       <div class="quickvote-progress-track">
+                           <div class="quickvote-progress-fill" style="width:${swipePercent}%"></div>
+                       </div>
+                   </div>
                    <div class="quickvote-guide" aria-label="Quick vote instructions">
                        <div class="quickvote-guide-item reject">
                            <i class="fa-solid fa-arrow-left"></i>
@@ -2496,7 +2667,7 @@
                                <span><i class="fa-solid fa-thumbs-up"></i> Upvote</span>
                            </div>
                        </div>
-                       <img src="${displayUrl}" class="meme-image" alt="Meme"
+                       <img src="${displayUrl}" class="meme-image" alt="Meme" loading="eager" decoding="async"
                             onerror="this.onerror=null; markImageUnavailable('${item.id}', '${item.image_id || ''}', (this.currentSrc || this.src)); this.src='${fallbackGif}';">
                        <div class="card-content">${safeContent}</div>
                        ${renderAIMeta(item)}
@@ -2533,6 +2704,7 @@
            searchInput.parentNode.replaceChild(newSearch, searchInput);
            newSearch.addEventListener('input', (e) => {
                currentSearchTerm = e.target.value.toLowerCase();
+               resetGridPagination();
                swipeIndex = 0;
                swipeHistory = [];
                if (!currentSearchTerm) saveSwipeProgress();
@@ -2690,8 +2862,13 @@
                    if (insertVoteError) throw insertVoteError;
                }
 
+               if (nextVoteValue === 1) showToast('Upvote saved', 'success');
+               else if (nextVoteValue === -1) showToast('Downvote saved', 'success');
+               else showToast('Vote removed', 'info');
+
            } catch (err) {
                console.error(err);
+               showToast('Vote could not be saved', 'error');
            }
        }
 
